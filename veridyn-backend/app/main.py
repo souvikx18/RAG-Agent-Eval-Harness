@@ -1,11 +1,21 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends
+from sqlalchemy import text
+from sqlalchemy.orm import Session
+
 from app.core.config import settings
+from app.core.database import get_db
+from app.api.auth import router as auth_router
+from app.api.agents import router as agents_router
+
 
 app = FastAPI(
     title=settings.APP_NAME,
     description="Proving AI Agents Are Ready for Production",
     version=settings.APP_VERSION,
 )
+
+app.include_router(auth_router)
+app.include_router(agents_router)
 
 
 @app.get("/")
@@ -23,3 +33,14 @@ def health_check():
         "status": "healthy",
         "environment": settings.ENVIRONMENT,
     }
+
+
+@app.get("/health/database")
+def database_health(db: Session = Depends(get_db)):
+    db.execute(text("SELECT 1"))
+
+    return {
+        "database": "connected",
+        "status": "healthy",
+    }
+
