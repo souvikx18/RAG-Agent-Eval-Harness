@@ -6,7 +6,11 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.api.auth import router as auth_router
 from app.api.agents import router as agents_router
-
+from app.api.agent_versions import router as agent_versions_router
+from app.api.evaluations import router as evaluations_router
+from app.api.test_cases import router as test_cases_router
+from app.api.test_runs import router as test_runs_router
+from app.api.execution_traces import router as execution_traces_router
 
 app = FastAPI(
     title=settings.APP_NAME,
@@ -16,7 +20,11 @@ app = FastAPI(
 
 app.include_router(auth_router)
 app.include_router(agents_router)
-
+app.include_router(agent_versions_router)
+app.include_router(evaluations_router)
+app.include_router(test_cases_router)
+app.include_router(test_runs_router)
+app.include_router(execution_traces_router)
 
 @app.get("/")
 def root():
