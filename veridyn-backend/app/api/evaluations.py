@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
@@ -13,6 +13,7 @@ from app.schemas.evaluation import (
     EvaluationCreateRequest,
     EvaluationResponse,
 )
+from app.services.evaluation_service import start_evaluation
 
 
 router = APIRouter(
@@ -33,7 +34,10 @@ def create_evaluation(
 ):
     agent_version = (
         db.query(AgentVersion)
-        .join(Agent)
+        .join(
+            Agent,
+            AgentVersion.agent_id == Agent.id,
+        )
         .filter(
             AgentVersion.id == data.agent_version_id,
             Agent.owner_id == current_user.id,
@@ -51,8 +55,6 @@ def create_evaluation(
         agent_version_id=agent_version.id,
         status="pending",
         trigger_type=data.trigger_type,
-        started_at=None,
-        completed_at=None,
     )
 
     db.add(evaluation)
@@ -67,13 +69,16 @@ def create_evaluation(
     response_model=list[EvaluationResponse],
 )
 def list_evaluations(
-    agent_version_id: str,
+    agent_version_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     agent_version = (
         db.query(AgentVersion)
-        .join(Agent)
+        .join(
+            Agent,
+            AgentVersion.agent_id == Agent.id,
+        )
         .filter(
             AgentVersion.id == agent_version_id,
             Agent.owner_id == current_user.id,
@@ -94,4 +99,48 @@ def list_evaluations(
         )
         .order_by(Evaluation.created_at.desc())
         .all()
+    )
+
+
+@router.post(
+    "/{evaluation_id}/start",
+    response_model=EvaluationResponse,
+)
+def start_evaluation_endpoint(
+    evaluation_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    evaluation = (
+        db.query(Evaluation)
+        .join(
+            AgentVersion,
+            Evaluation.agent_version_id == AgentVersion.id,
+        )
+        .join(
+            Agent,
+            AgentVersion.agent_id == Agent.id,
+        )
+        .filter(
+            Evaluation.id == evaluation_id,
+            Agent.owner_id == current_user.id,
+        )
+        .first()
+    )
+
+    if not evaluation:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Evaluation not found",
+        )
+
+    if evaluation.status != "pending":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Evaluation has already started",
+        )
+
+    return start_evaluation(
+        evaluation,
+        db,
     )

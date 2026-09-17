@@ -10,7 +10,7 @@ from app.models.test_case import TestCase
 from app.models.test_run import TestRun
 from app.models.user import User
 from app.schemas.test_run import TestRunResponse
-
+from app.services.agent_execution_service import execute_test_run
 
 router = APIRouter(
     prefix="/test-cases/{test_case_id}/runs",
@@ -69,7 +69,7 @@ def create_test_run(
     db.commit()
     db.refresh(test_run)
 
-    return test_run
+    return execute_test_run(test_run, db)
 
 
 @router.get(
