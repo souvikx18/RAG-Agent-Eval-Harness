@@ -13,7 +13,10 @@ from app.schemas.evaluation import (
     EvaluationCreateRequest,
     EvaluationResponse,
 )
-from app.services.evaluation_service import start_evaluation
+from app.services.evaluation_service import (
+    start_evaluation,
+    complete_evaluation,
+)
 
 
 router = APIRouter(
@@ -144,3 +147,44 @@ def start_evaluation_endpoint(
         evaluation,
         db,
     )
+
+
+@router.post(
+    "/{evaluation_id}/complete",
+    response_model=EvaluationResponse,
+)
+def complete_evaluation_endpoint(
+    evaluation_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    evaluation = (
+        db.query(Evaluation)
+        .join(
+            AgentVersion,
+            Evaluation.agent_version_id == AgentVersion.id,
+        )
+        .join(
+            Agent,
+            AgentVersion.agent_id == Agent.id,
+        )
+        .filter(
+            Evaluation.id == evaluation_id,
+            Agent.owner_id == current_user.id,
+        )
+        .first()
+    )
+
+    if not evaluation:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Evaluation not found",
+        )
+
+    if evaluation.status != "running":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Evaluation is not running",
+        )
+
+    return complete_evaluation(evaluation, db)

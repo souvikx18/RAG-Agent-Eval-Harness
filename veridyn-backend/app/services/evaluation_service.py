@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from app.models.evaluation import Evaluation
 from app.models.test_case import TestCase
 from app.services.test_run_service import start_test_run
+from app.services.scoring_service import calculate_evaluation_score
 
 
 def start_evaluation(
@@ -35,9 +36,19 @@ def complete_evaluation(
     db: Session,
     summary: str | None = None,
 ) -> Evaluation:
+
+    overall_score = calculate_evaluation_score(
+        evaluation,
+        db,
+    )
+
     evaluation.status = "completed"
     evaluation.completed_at = datetime.now(timezone.utc)
-    evaluation.summary = summary
+    evaluation.summary = (
+        summary
+        or f"Evaluation completed with overall score: "
+        f"{overall_score:.2f}"
+    )
 
     db.commit()
     db.refresh(evaluation)
