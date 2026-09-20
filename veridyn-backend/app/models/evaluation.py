@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime, timezone
+from sqlalchemy import Float
 
 from sqlalchemy import DateTime, ForeignKey, String, Text
 from sqlalchemy.dialects.postgresql import UUID
@@ -38,6 +39,11 @@ class Evaluation(Base):
 
     summary: Mapped[str | None] = mapped_column(
         Text,
+        nullable=True,
+    )
+
+    overall_score: Mapped[float | None] = mapped_column(
+        Float,
         nullable=True,
     )
 

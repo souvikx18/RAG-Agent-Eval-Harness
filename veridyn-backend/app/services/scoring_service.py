@@ -6,6 +6,12 @@ from app.models.test_run import TestRun
 from app.models.test_case import TestCase
 
 
+METRIC_WEIGHTS = {
+    "correctness": 0.70,
+    "latency": 0.30,
+}
+
+
 def calculate_evaluation_score(
     evaluation: Evaluation,
     db: Session,
@@ -27,13 +33,28 @@ def calculate_evaluation_score(
         .all()
     )
 
-    scores = [
-        result.score
-        for result in results
-        if result.score is not None
-    ]
-
-    if not scores:
+    if not results:
         return 0.0
 
-    return sum(scores) / len(scores)
+    weighted_score = 0.0
+    total_weight = 0.0
+
+    for result in results:
+        if result.score is None:
+            continue
+
+        weight = METRIC_WEIGHTS.get(
+            result.metric_name,
+            0.0,
+        )
+
+        if weight == 0.0:
+            continue
+
+        weighted_score += result.score * weight
+        total_weight += weight
+
+    if total_weight == 0.0:
+        return 0.0
+
+    return weighted_score / total_weight

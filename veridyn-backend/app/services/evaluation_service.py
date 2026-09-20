@@ -81,6 +81,8 @@ def complete_evaluation(
         db,
     )
 
+    evaluation.overall_score = overall_score
+
     evaluation.status = "completed"
     evaluation.completed_at = datetime.now(timezone.utc)
     evaluation.summary = (

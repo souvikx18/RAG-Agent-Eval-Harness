@@ -17,7 +17,6 @@ class EvaluationResponse(BaseModel):
     status: str
     trigger_type: str
     summary: str | None = None
+    overall_score: float | None = None
 
-    model_config = {
-        "from_attributes": True
-    }
+    model_config = {"from_attributes": True}
