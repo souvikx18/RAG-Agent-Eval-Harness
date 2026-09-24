@@ -26,8 +26,6 @@ def execute_test_run(
         test_run.status = "running"
         db.commit()
 
-        # Temporary agent execution.
-        # The real AI agent adapter will be connected later.
         actual_output = (
             f"Agent received input: {test_case.input_data}. "
             f"Expected behavior: {test_case.expected_behavior}"

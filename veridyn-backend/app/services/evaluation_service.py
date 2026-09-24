@@ -15,21 +15,12 @@ def start_evaluation(
     evaluation: Evaluation,
     db: Session,
 ) -> Evaluation:
+
     evaluation.status = "running"
     evaluation.started_at = datetime.now(timezone.utc)
 
     db.commit()
     db.refresh(evaluation)
-
-    test_cases = (
-        db.query(TestCase)
-        .filter(TestCase.evaluation_id == evaluation.id)
-        .order_by(TestCase.created_at.asc())
-        .all()
-    )
-
-    for test_case in test_cases:
-        start_test_run(test_case, db)
 
     return evaluation
 
@@ -71,18 +62,11 @@ def complete_evaluation(
         )
 
     overall_score = calculate_evaluation_score(
-        evaluation,
-        db,
-    )
-
-    create_deployment_gate(
-        evaluation,
-        overall_score,
-        db,
+    evaluation,
+    db,
     )
 
     evaluation.overall_score = overall_score
-
     evaluation.status = "completed"
     evaluation.completed_at = datetime.now(timezone.utc)
     evaluation.summary = (
@@ -94,4 +78,9 @@ def complete_evaluation(
     db.commit()
     db.refresh(evaluation)
 
-    return evaluation
+    create_deployment_gate(
+        evaluation,
+        db,
+    )
+
+    return evaluation

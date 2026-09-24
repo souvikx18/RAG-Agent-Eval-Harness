@@ -30,9 +30,13 @@ def calculate_deployment_decision(
 
 def create_deployment_gate(
     evaluation: Evaluation,
-    overall_score: float,
     db: Session,
 ) -> DeploymentGate:
+
+    if evaluation.overall_score is None:
+        raise ValueError(
+            "Evaluation does not have an overall score"
+        )
 
     existing_gate = (
         db.query(DeploymentGate)
@@ -47,7 +51,7 @@ def create_deployment_gate(
 
     gate = calculate_deployment_decision(
         evaluation,
-        overall_score,
+        evaluation.overall_score,
     )
 
     db.add(gate)
