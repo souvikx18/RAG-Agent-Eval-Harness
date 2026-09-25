@@ -1,3 +1,5 @@
+import uuid
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -20,15 +22,24 @@ router = APIRouter(
 
 
 def get_owned_test_case(
-    test_case_id: str,
+    test_case_id: uuid.UUID,
     current_user: User,
     db: Session,
-):
+) -> TestCase:
     test_case = (
         db.query(TestCase)
-        .join(Evaluation)
-        .join(AgentVersion)
-        .join(Agent)
+        .join(
+            Evaluation,
+            TestCase.evaluation_id == Evaluation.id,
+        )
+        .join(
+            AgentVersion,
+            Evaluation.agent_version_id == AgentVersion.id,
+        )
+        .join(
+            Agent,
+            AgentVersion.agent_id == Agent.id,
+        )
         .filter(
             TestCase.id == test_case_id,
             Agent.owner_id == current_user.id,
@@ -51,7 +62,7 @@ def get_owned_test_case(
     status_code=status.HTTP_201_CREATED,
 )
 def create_test_run(
-    test_case_id: str,
+    test_case_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -80,7 +91,7 @@ def create_test_run(
     response_model=list[TestRunResponse],
 )
 def list_test_runs(
-    test_case_id: str,
+    test_case_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
