@@ -1,3 +1,5 @@
+import uuid
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -18,14 +20,20 @@ router = APIRouter(
 
 
 def get_owned_evaluation(
-    evaluation_id: str,
+    evaluation_id: uuid.UUID,
     current_user: User,
     db: Session,
-):
+) -> Evaluation:
     evaluation = (
         db.query(Evaluation)
-        .join(AgentVersion)
-        .join(Agent)
+        .join(
+            AgentVersion,
+            Evaluation.agent_version_id == AgentVersion.id,
+        )
+        .join(
+            Agent,
+            AgentVersion.agent_id == Agent.id,
+        )
         .filter(
             Evaluation.id == evaluation_id,
             Agent.owner_id == current_user.id,
@@ -48,7 +56,7 @@ def get_owned_evaluation(
     status_code=status.HTTP_201_CREATED,
 )
 def create_deployment_gate(
-    evaluation_id: str,
+    evaluation_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -77,7 +85,7 @@ def create_deployment_gate(
     response_model=list[DeploymentGateResponse],
 )
 def list_deployment_gates(
-    evaluation_id: str,
+    evaluation_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
