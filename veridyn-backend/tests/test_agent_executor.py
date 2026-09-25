@@ -3,6 +3,9 @@ from app.services.executors.agent_executor import (
     AgentExecutionResponse,
 )
 from app.services.executors.factory import get_agent_executor
+from app.services.executors.placeholder_executor import (
+    PlaceholderAgentExecutor,
+)
 
 
 def test_placeholder_executor():
@@ -29,9 +32,9 @@ def test_placeholder_executor():
     assert response.error is None
 
 
-def test_placeholder_executor_with_endpoint_and_config():
-    """Verify request fields endpoint and config_hash are properly accommodated."""
-    executor = get_agent_executor(endpoint="https://api.myagent.ai/v1/chat")
+def test_placeholder_executor_direct():
+    """Verify PlaceholderAgentExecutor handles requests with optional metadata."""
+    executor = PlaceholderAgentExecutor()
 
     request = AgentExecutionRequest(
         input_data="What is the refund policy?",
