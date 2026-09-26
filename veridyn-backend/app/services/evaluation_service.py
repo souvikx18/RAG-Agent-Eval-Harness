@@ -25,6 +25,36 @@ def start_evaluation(
     return evaluation
 
 
+def build_evaluation_summary(
+    overall_score: float,
+    test_runs: list[TestRun],
+) -> str:
+
+    total_runs = len(test_runs)
+
+    passed_runs = sum(
+        1
+        for test_run in test_runs
+        if test_run.status == "completed"
+        and test_run.result == "passed"
+    )
+
+    failed_runs = sum(
+        1
+        for test_run in test_runs
+        if test_run.status == "failed"
+        or test_run.result == "failed"
+    )
+
+    return (
+        f"Evaluation completed with overall score: "
+        f"{overall_score:.2f}. "
+        f"Total test runs: {total_runs}. "
+        f"Passed: {passed_runs}. "
+        f"Failed: {failed_runs}."
+    )
+
+
 def complete_evaluation(
     evaluation: Evaluation,
     db: Session,
@@ -71,8 +101,10 @@ def complete_evaluation(
     evaluation.completed_at = datetime.now(timezone.utc)
     evaluation.summary = (
         summary
-        or f"Evaluation completed with overall score: "
-        f"{overall_score:.2f}"
+        or build_evaluation_summary(
+            overall_score,
+            test_runs,
+        )
     )
 
     db.commit()
