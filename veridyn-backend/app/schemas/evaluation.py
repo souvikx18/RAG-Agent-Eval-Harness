@@ -19,4 +19,11 @@ class EvaluationResponse(BaseModel):
     summary: str | None = None
     overall_score: float | None = None
 
-    model_config = {"from_attributes": True}
+    total_runs: int = 0
+    passed_runs: int = 0
+    failed_runs: int = 0
+    average_latency_ms: float = 0.0
+
+    model_config = {
+        "from_attributes": True,
+    }

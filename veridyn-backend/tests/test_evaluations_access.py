@@ -60,6 +60,10 @@ def test_get_evaluations_own_agent_version(client, authenticated_user_context):
     assert isinstance(evaluations, list)
     for item in evaluations:
         assert item["agent_version_id"] == agent_version_id
+        assert "total_runs" in item
+        assert "passed_runs" in item
+        assert "failed_runs" in item
+        assert "average_latency_ms" in item
 
 
 def test_get_evaluations_unknown_agent_version(client, authenticated_user_context):
