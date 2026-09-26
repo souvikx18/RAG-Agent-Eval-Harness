@@ -34,7 +34,9 @@ def create_evaluation_result(
 
     test_case = (
         db.query(TestCase)
-        .filter(TestCase.id == test_run.test_case_id)
+        .filter(
+            TestCase.id == test_run.test_case_id
+        )
         .first()
     )
 
@@ -47,14 +49,17 @@ def create_evaluation_result(
     results = []
 
     if test_run.status == "failed":
+
         results.append(
             EvaluationResult(
                 test_run_id=test_run.id,
                 metric_name="correctness",
                 score=0.0,
                 status="failed",
-                explanation=test_run.error_message
-                or "Test run failed.",
+                explanation=(
+                    test_run.error_message
+                    or "Agent execution failed."
+                ),
             )
         )
 
@@ -64,11 +69,15 @@ def create_evaluation_result(
                 metric_name="latency",
                 score=0.0,
                 status="failed",
-                explanation="Latency could not be evaluated because execution failed.",
+                explanation=(
+                    "Latency could not be evaluated "
+                    "because agent execution failed."
+                ),
             )
         )
 
     else:
+
         correctness_score, correctness_explanation = (
             calculate_correctness_score(
                 test_case.expected_behavior,
