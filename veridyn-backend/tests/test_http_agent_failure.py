@@ -1,4 +1,3 @@
-from unittest.mock import patch, MagicMock
 import pytest
 from fastapi.testclient import TestClient
 from app.main import app
@@ -33,25 +32,25 @@ def auth_headers(db_session):
     return {"Authorization": f"Bearer {token}"}
 
 
-def test_http_agent_e2e_integration(client, auth_headers, db_session):
+def test_http_agent_failure_handling(client, auth_headers, db_session):
     """
-    Step 77 End-to-End Integration Test:
-    Executes a TestRun against the agent endpoint,
-    validating output fidelity, status transitions, and metric calculations.
+    Step 78 Test: Verifies that an unreachable agent endpoint (port 9999)
+    fails gracefully without unhandled exceptions reaching the API.
     """
     user = db_session.query(User).filter(User.email == "test2@example.com").first()
     agent = db_session.query(Agent).filter(Agent.owner_id == user.id).first()
     assert agent is not None
 
+    # Locate version pointing to unreachable port 9999
     agent_version = (
         db_session.query(AgentVersion)
         .filter(
             AgentVersion.agent_id == agent.id,
-            AgentVersion.endpoint == "http://127.0.0.1:9000/agent",
+            AgentVersion.endpoint == "http://127.0.0.1:9999/agent",
         )
         .first()
     )
-    assert agent_version is not None, "AgentVersion with http://127.0.0.1:9000/agent must exist"
+    assert agent_version is not None
 
     evaluation = (
         db_session.query(Evaluation)
@@ -67,29 +66,26 @@ def test_http_agent_e2e_integration(client, auth_headers, db_session):
     )
     assert test_case is not None
 
-    # Mock the HTTP agent response for reliable, isolated CI/CD testing
-    with patch("httpx.post") as mock_post:
-        mock_response = MagicMock()
-        mock_response.json.return_value = {
-            "output": "Hello! I received your message: Hello Veridyn"
-        }
-        mock_response.raise_for_status.return_value = None
-        mock_post.return_value = mock_response
+    # Execute TestRun against unreachable endpoint
+    run_resp = client.post(f"/test-cases/{test_case.id}/runs", headers=auth_headers)
+    assert run_resp.status_code == 201
+    run_data = run_resp.json()
 
-        # Execute TestRun
-        run_resp = client.post(f"/test-cases/{test_case.id}/runs", headers=auth_headers)
-        assert run_resp.status_code == 201
-        run_data = run_resp.json()
-        assert run_data["status"] == "completed"
-        assert run_data["result"] == "passed"
-        assert "Hello! I received your message:" in run_data["actual_output"]
-        assert run_data["error_message"] is None
+    assert run_data["status"] == "failed"
+    assert run_data["result"] == "failed"
+    assert run_data["actual_output"] is None
+    assert run_data["error_message"] is not None
 
-    # Verify Evaluation Results
+    # Verify Evaluation Results reflect the failure
     results_resp = client.get(f"/test-runs/{run_data['id']}/results", headers=auth_headers)
     assert results_resp.status_code == 200
     results = results_resp.json()
     metrics = {r["metric_name"]: r for r in results}
+
     assert "correctness" in metrics
-    assert metrics["correctness"]["score"] == 1.0
-    assert metrics["correctness"]["status"] == "passed"
+    assert metrics["correctness"]["score"] == 0.0
+    assert metrics["correctness"]["status"] == "failed"
+
+    assert "latency" in metrics
+    assert metrics["latency"]["score"] == 0.0
+    assert metrics["latency"]["status"] == "failed"
