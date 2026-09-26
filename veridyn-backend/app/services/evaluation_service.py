@@ -25,10 +25,9 @@ def start_evaluation(
     return evaluation
 
 
-def build_evaluation_summary(
-    overall_score: float,
+def calculate_evaluation_statistics(
     test_runs: list[TestRun],
-) -> str:
+) -> dict:
 
     total_runs = len(test_runs)
 
@@ -46,12 +45,49 @@ def build_evaluation_summary(
         or test_run.result == "failed"
     )
 
+    latency_values = [
+        test_run.latency_ms
+        for test_run in test_runs
+        if test_run.latency_ms is not None
+    ]
+
+    average_latency_ms = (
+        sum(latency_values) / len(latency_values)
+        if latency_values
+        else 0.0
+    )
+
+    return {
+        "total_runs": total_runs,
+        "passed_runs": passed_runs,
+        "failed_runs": failed_runs,
+        "average_latency_ms": round(
+            average_latency_ms,
+            2,
+        ),
+    }
+
+
+def build_evaluation_summary(
+    overall_score: float,
+    test_runs: list[TestRun],
+) -> str:
+
+    statistics = calculate_evaluation_statistics(
+        test_runs
+    )
+
     return (
         f"Evaluation completed with overall score: "
         f"{overall_score:.2f}. "
-        f"Total test runs: {total_runs}. "
-        f"Passed: {passed_runs}. "
-        f"Failed: {failed_runs}."
+        f"Total test runs: "
+        f"{statistics['total_runs']}. "
+        f"Passed: "
+        f"{statistics['passed_runs']}. "
+        f"Failed: "
+        f"{statistics['failed_runs']}. "
+        f"Average latency: "
+        f"{statistics['average_latency_ms']:.2f} ms."
     )
 
 
