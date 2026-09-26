@@ -8,8 +8,6 @@ from app.core.dependencies import get_current_user
 from app.models.agent import Agent
 from app.models.agent_version import AgentVersion
 from app.models.evaluation import Evaluation
-from app.models.test_case import TestCase
-from app.models.test_run import TestRun
 from app.models.user import User
 from app.schemas.evaluation import (
     EvaluationCreateRequest,
@@ -18,6 +16,9 @@ from app.schemas.evaluation import (
 from app.services.evaluation_service import (
     start_evaluation,
     complete_evaluation,
+)
+from app.services.evaluation_statistics_service import (
+    calculate_evaluation_statistics,
 )
 
 
@@ -32,44 +33,9 @@ def build_evaluation_response(
     db: Session,
 ) -> dict:
 
-    test_runs = (
-        db.query(TestRun)
-        .join(
-            TestCase,
-            TestRun.test_case_id == TestCase.id,
-        )
-        .filter(
-            TestCase.evaluation_id == evaluation.id
-        )
-        .all()
-    )
-
-    total_runs = len(test_runs)
-
-    passed_runs = sum(
-        1
-        for test_run in test_runs
-        if test_run.status == "completed"
-        and test_run.result == "passed"
-    )
-
-    failed_runs = sum(
-        1
-        for test_run in test_runs
-        if test_run.status == "failed"
-        or test_run.result == "failed"
-    )
-
-    latency_values = [
-        test_run.latency_ms
-        for test_run in test_runs
-        if test_run.latency_ms is not None
-    ]
-
-    average_latency_ms = (
-        sum(latency_values) / len(latency_values)
-        if latency_values
-        else 0.0
+    statistics = calculate_evaluation_statistics(
+        evaluation,
+        db,
     )
 
     return {
@@ -79,13 +45,7 @@ def build_evaluation_response(
         "trigger_type": evaluation.trigger_type,
         "summary": evaluation.summary,
         "overall_score": evaluation.overall_score,
-        "total_runs": total_runs,
-        "passed_runs": passed_runs,
-        "failed_runs": failed_runs,
-        "average_latency_ms": round(
-            average_latency_ms,
-            2,
-        ),
+        **statistics,
     }
 
 
