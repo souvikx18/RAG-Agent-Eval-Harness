@@ -9,16 +9,27 @@ def calculate_evaluation_statistics(
     evaluation: Evaluation,
     db: Session,
 ) -> dict:
+    """
+    Calculate aggregate execution statistics for an evaluation.
+
+    Statistics are calculated from all TestRuns whose TestCase
+    belongs to the provided Evaluation.
+
+    Rules:
+    - total_runs includes every TestRun.
+    - passed_runs includes completed runs with result='passed'.
+    - failed_runs includes failed runs or runs with result='failed'.
+    - running or other unfinished states are not counted as passed
+      or failed.
+    - average_latency_ms uses only TestRuns with a non-null latency.
+    - If no latency values exist, average_latency_ms is 0.0.
+    - TestRuns belonging to other evaluations are excluded.
+    """
 
     test_runs = (
         db.query(TestRun)
-        .join(
-            TestCase,
-            TestRun.test_case_id == TestCase.id,
-        )
-        .filter(
-            TestCase.evaluation_id == evaluation.id
-        )
+        .join(TestCase, TestRun.test_case_id == TestCase.id)
+        .filter(TestCase.evaluation_id == evaluation.id)
         .all()
     )
 
@@ -54,8 +65,5 @@ def calculate_evaluation_statistics(
         "total_runs": total_runs,
         "passed_runs": passed_runs,
         "failed_runs": failed_runs,
-        "average_latency_ms": round(
-            average_latency_ms,
-            2,
-        ),
+        "average_latency_ms": round(average_latency_ms, 2),
     }
