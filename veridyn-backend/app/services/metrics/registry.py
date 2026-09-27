@@ -5,14 +5,21 @@ from app.services.metrics.latency_metric import LatencyMetric
 
 class MetricRegistry:
     def __init__(self):
-        self._metrics = {}
+        self._metrics: dict[str, Metric] = {}
 
         self.register(CorrectnessMetric())
         self.register(LatencyMetric())
 
     def register(self, metric: Metric) -> None:
+        if not isinstance(metric, Metric):
+            raise TypeError(
+                "Only Metric instances can be registered."
+            )
+
         if not metric.name.strip():
-            raise ValueError("Metric name cannot be empty.")
+            raise ValueError(
+                "Metric name cannot be empty."
+            )
 
         if metric.name in self._metrics:
             raise ValueError(
@@ -31,6 +38,9 @@ class MetricRegistry:
 
     def all(self) -> list[Metric]:
         return list(self._metrics.values())
+
+    def names(self) -> list[str]:
+        return list(self._metrics.keys())
 
 
 metric_registry = MetricRegistry()
