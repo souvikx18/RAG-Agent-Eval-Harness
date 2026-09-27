@@ -1,4 +1,8 @@
-from app.services.metrics.base_metric import Metric, MetricResult
+from app.services.metrics.base_metric import (
+    Metric,
+    MetricContext,
+    MetricResult,
+)
 
 
 class CorrectnessMetric(Metric):
@@ -9,11 +13,10 @@ class CorrectnessMetric(Metric):
 
     def evaluate(
         self,
-        expected_behavior: str | None,
-        actual_output: str | None,
+        context: MetricContext,
     ) -> MetricResult:
 
-        if not actual_output:
+        if not context.actual_output:
             return MetricResult(
                 metric_name=self.name,
                 score=0.0,
@@ -21,7 +24,7 @@ class CorrectnessMetric(Metric):
                 explanation="No actual output was produced.",
             )
 
-        if not expected_behavior:
+        if not context.expected_behavior:
             return MetricResult(
                 metric_name=self.name,
                 score=1.0,
@@ -29,8 +32,8 @@ class CorrectnessMetric(Metric):
                 explanation="No expected behavior was provided.",
             )
 
-        expected = expected_behavior.lower().strip()
-        actual = actual_output.lower().strip()
+        expected = context.expected_behavior.lower().strip()
+        actual = context.actual_output.lower().strip()
 
         if expected in actual:
             return MetricResult(

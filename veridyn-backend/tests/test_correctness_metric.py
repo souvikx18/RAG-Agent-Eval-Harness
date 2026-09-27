@@ -1,3 +1,4 @@
+from app.services.metrics.base_metric import MetricContext
 from app.services.metrics.correctness_metric import CorrectnessMetric
 
 
@@ -5,8 +6,11 @@ def test_correctness_metric_passes_when_expected_behavior_is_found():
     metric = CorrectnessMetric()
 
     result = metric.evaluate(
-        "helpful greeting",
-        "Hello! This is a helpful greeting.",
+        MetricContext(
+            expected_behavior="helpful greeting",
+            actual_output="Hello! This is a helpful greeting.",
+            latency_ms=200,
+        )
     )
 
     assert metric.name == "correctness"
@@ -19,8 +23,11 @@ def test_correctness_metric_fails_when_expected_behavior_is_missing():
     metric = CorrectnessMetric()
 
     result = metric.evaluate(
-        "helpful greeting",
-        "I cannot help with that.",
+        MetricContext(
+            expected_behavior="helpful greeting",
+            actual_output="I cannot help with that.",
+            latency_ms=200,
+        )
     )
 
     assert result.score == 0.0
@@ -31,8 +38,11 @@ def test_correctness_metric_fails_without_actual_output():
     metric = CorrectnessMetric()
 
     result = metric.evaluate(
-        "helpful greeting",
-        None,
+        MetricContext(
+            expected_behavior="helpful greeting",
+            actual_output=None,
+            latency_ms=None,
+        )
     )
 
     assert result.score == 0.0
@@ -43,8 +53,11 @@ def test_correctness_metric_passes_without_expected_behavior():
     metric = CorrectnessMetric()
 
     result = metric.evaluate(
-        None,
-        "Any response",
+        MetricContext(
+            expected_behavior=None,
+            actual_output="Any response",
+            latency_ms=200,
+        )
     )
 
     assert result.score == 1.0
@@ -55,8 +68,11 @@ def test_correctness_metric_is_case_insensitive():
     metric = CorrectnessMetric()
 
     result = metric.evaluate(
-        "Helpful Greeting",
-        "This is a HELPFUL GREETING.",
+        MetricContext(
+            expected_behavior="Helpful Greeting",
+            actual_output="This is a HELPFUL GREETING.",
+            latency_ms=200,
+        )
     )
 
     assert result.score == 1.0

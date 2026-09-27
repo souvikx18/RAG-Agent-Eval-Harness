@@ -1,4 +1,8 @@
-from app.services.metrics.base_metric import Metric, MetricResult
+from app.services.metrics.base_metric import (
+    Metric,
+    MetricContext,
+    MetricResult,
+)
 
 
 class LatencyMetric(Metric):
@@ -9,10 +13,10 @@ class LatencyMetric(Metric):
 
     def evaluate(
         self,
-        expected_behavior: str | None,
-        actual_output: str | None,
-        latency_ms: int | None = None,
+        context: MetricContext,
     ) -> MetricResult:
+
+        latency_ms = context.latency_ms
 
         if latency_ms is None:
             return MetricResult(

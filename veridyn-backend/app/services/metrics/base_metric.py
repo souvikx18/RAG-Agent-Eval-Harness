@@ -3,6 +3,13 @@ from dataclasses import dataclass
 
 
 @dataclass
+class MetricContext:
+    expected_behavior: str | None
+    actual_output: str | None
+    latency_ms: int | None
+
+
+@dataclass
 class MetricResult:
     metric_name: str
     score: float
@@ -13,9 +20,6 @@ class MetricResult:
 class Metric(ABC):
     """
     Base abstraction for evaluation metrics.
-
-    Every metric receives the expected behavior and actual output
-    and returns a standardized MetricResult.
     """
 
     @property
@@ -26,7 +30,6 @@ class Metric(ABC):
     @abstractmethod
     def evaluate(
         self,
-        expected_behavior: str | None,
-        actual_output: str | None,
+        context: MetricContext,
     ) -> MetricResult:
         pass
