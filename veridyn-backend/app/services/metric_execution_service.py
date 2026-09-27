@@ -8,40 +8,39 @@ def execute_metrics(
     test_run: TestRun,
 ) -> list[dict]:
     """
-    Execute all currently registered metrics for a TestRun.
+    Execute all registered evaluation metrics for a TestRun.
     """
 
     results = []
 
-    correctness_metric = metric_registry.get("correctness")
-    correctness_result = correctness_metric.evaluate(
-        test_case.expected_behavior,
-        test_run.actual_output,
-    )
+    for metric in metric_registry.all():
 
-    results.append(
-        {
-            "metric_name": correctness_result.metric_name,
-            "score": correctness_result.score,
-            "status": correctness_result.status,
-            "explanation": correctness_result.explanation,
-        }
-    )
+        if metric.name == "correctness":
+            metric_result = metric.evaluate(
+                test_case.expected_behavior,
+                test_run.actual_output,
+            )
 
-    latency_metric = metric_registry.get("latency")
-    latency_result = latency_metric.evaluate(
-        None,
-        test_run.actual_output,
-        test_run.latency_ms,
-    )
+        elif metric.name == "latency":
+            metric_result = metric.evaluate(
+                None,
+                test_run.actual_output,
+                test_run.latency_ms,
+            )
 
-    results.append(
-        {
-            "metric_name": latency_result.metric_name,
-            "score": latency_result.score,
-            "status": latency_result.status,
-            "explanation": latency_result.explanation,
-        }
-    )
+        else:
+            metric_result = metric.evaluate(
+                test_case.expected_behavior,
+                test_run.actual_output,
+            )
+
+        results.append(
+            {
+                "metric_name": metric_result.metric_name,
+                "score": metric_result.score,
+                "status": metric_result.status,
+                "explanation": metric_result.explanation,
+            }
+        )
 
     return results
