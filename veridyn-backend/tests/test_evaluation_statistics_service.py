@@ -441,5 +441,91 @@ def test_evaluation_statistics_with_running_run(db):
     assert statistics["average_latency_ms"] == 100.0
 
 
+def test_evaluation_statistics_with_mixed_run_states(db):
+    evaluation = Evaluation(
+        agent_version_id=uuid.uuid4(),
+        status="running",
+        trigger_type="manual",
+    )
+    db.add(evaluation)
+    db.commit()
+    db.refresh(evaluation)
+
+    test_case = TestCase(
+        evaluation_id=evaluation.id,
+        name="Mixed Run States Test",
+        category="reliability",
+        input_data="Hello",
+        expected_behavior="Successful response",
+        is_adversarial=False,
+    )
+    db.add(test_case)
+    db.commit()
+    db.refresh(test_case)
+
+    run_passed_one = TestRun(
+        test_case_id=test_case.id,
+        status="completed",
+        result="passed",
+        latency_ms=100,
+    )
+
+    run_passed_two = TestRun(
+        test_case_id=test_case.id,
+        status="completed",
+        result="passed",
+        latency_ms=200,
+    )
+
+    run_failed_result = TestRun(
+        test_case_id=test_case.id,
+        status="completed",
+        result="failed",
+        latency_ms=300,
+    )
+
+    run_failed_status = TestRun(
+        test_case_id=test_case.id,
+        status="failed",
+        result="failed",
+        latency_ms=400,
+    )
+
+    run_running = TestRun(
+        test_case_id=test_case.id,
+        status="running",
+        result=None,
+        latency_ms=None,
+    )
+
+    run_missing_latency = TestRun(
+        test_case_id=test_case.id,
+        status="completed",
+        result="passed",
+        latency_ms=None,
+    )
+
+    db.add_all([
+        run_passed_one,
+        run_passed_two,
+        run_failed_result,
+        run_failed_status,
+        run_running,
+        run_missing_latency,
+    ])
+    db.commit()
+
+    statistics = calculate_evaluation_statistics(
+        evaluation,
+        db,
+    )
+
+    assert statistics["total_runs"] == 6
+    assert statistics["passed_runs"] == 3
+    assert statistics["failed_runs"] == 2
+    assert statistics["average_latency_ms"] == 250.0
+
+
+
 
 
