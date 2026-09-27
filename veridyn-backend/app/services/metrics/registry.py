@@ -42,5 +42,11 @@ class MetricRegistry:
     def names(self) -> list[str]:
         return list(self._metrics.keys())
 
+    def reset(self) -> None:
+        self._metrics.clear()
+
+        self.register(CorrectnessMetric())
+        self.register(LatencyMetric())
+
 
 metric_registry = MetricRegistry()

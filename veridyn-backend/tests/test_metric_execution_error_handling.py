@@ -18,8 +18,6 @@ class FailingMetric(Metric):
 
 
 def test_metric_execution_converts_exception_to_failed_result():
-    original_metrics = metric_registry.all()
-
     try:
         metric_registry.register(FailingMetric())
 
@@ -49,15 +47,10 @@ def test_metric_execution_converts_exception_to_failed_result():
         )
 
     finally:
-        metric_registry._metrics = {
-            metric.name: metric
-            for metric in original_metrics
-        }
+        metric_registry.reset()
 
 
 def test_metric_failure_does_not_stop_other_metrics():
-    original_metrics = metric_registry.all()
-
     try:
         metric_registry.register(FailingMetric())
 
@@ -83,7 +76,4 @@ def test_metric_failure_does_not_stop_other_metrics():
         assert "failing_metric" in metric_names
 
     finally:
-        metric_registry._metrics = {
-            metric.name: metric
-            for metric in original_metrics
-        }
+        metric_registry.reset()

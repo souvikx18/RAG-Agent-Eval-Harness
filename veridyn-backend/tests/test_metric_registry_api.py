@@ -1,6 +1,10 @@
 import pytest
 
-from app.services.metrics.base_metric import Metric, MetricContext, MetricResult
+from app.services.metrics.base_metric import (
+    Metric,
+    MetricContext,
+    MetricResult,
+)
 from app.services.metrics.registry import MetricRegistry
 
 
@@ -59,3 +63,31 @@ def test_registry_all_returns_new_list():
     metrics.clear()
 
     assert len(registry.all()) == 2
+
+
+def test_registry_reset_restores_default_metrics():
+    registry = MetricRegistry()
+
+    registry.register(TestMetric())
+
+    assert "test_metric" in registry.names()
+
+    registry.reset()
+
+    assert registry.names() == [
+        "correctness",
+        "latency",
+    ]
+
+
+def test_registry_reset_removes_custom_metrics():
+    registry = MetricRegistry()
+
+    registry.register(TestMetric())
+    registry.reset()
+
+    with pytest.raises(
+        ValueError,
+        match="Unknown metric",
+    ):
+        registry.get("test_metric")
