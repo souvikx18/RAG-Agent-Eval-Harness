@@ -1,13 +1,9 @@
 import pytest
-
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.core.database import Base
 
-# Import ALL models so SQLAlchemy registers
-# every table and foreign-key relationship
-# in Base.metadata before create_all().
 from app.models.user import User
 from app.models.agent import Agent
 from app.models.agent_version import AgentVersion
@@ -23,9 +19,7 @@ from app.models.deployment_gate import DeploymentGate
 def db():
     engine = create_engine(
         "sqlite:///:memory:",
-        connect_args={
-            "check_same_thread": False,
-        },
+        connect_args={"check_same_thread": False},
     )
 
     TestingSessionLocal = sessionmaker(
