@@ -91,3 +91,23 @@ def test_registry_reset_removes_custom_metrics():
         match="Unknown metric",
     ):
         registry.get("test_metric")
+
+
+def test_registry_can_start_without_defaults():
+    registry = MetricRegistry(
+        register_defaults=False
+    )
+
+    assert registry.names() == []
+
+
+def test_registry_without_defaults_can_register_custom_metric():
+    registry = MetricRegistry(
+        register_defaults=False
+    )
+
+    metric = TestMetric()
+    registry.register(metric)
+
+    assert registry.get("test_metric") is metric
+    assert registry.names() == ["test_metric"]

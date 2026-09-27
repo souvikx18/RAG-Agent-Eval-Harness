@@ -4,11 +4,12 @@ from app.services.metrics.latency_metric import LatencyMetric
 
 
 class MetricRegistry:
-    def __init__(self):
+    def __init__(self, register_defaults: bool = True):
         self._metrics: dict[str, Metric] = {}
 
-        self.register(CorrectnessMetric())
-        self.register(LatencyMetric())
+        if register_defaults:
+            self.register(CorrectnessMetric())
+            self.register(LatencyMetric())
 
     def register(self, metric: Metric) -> None:
         if not isinstance(metric, Metric):
