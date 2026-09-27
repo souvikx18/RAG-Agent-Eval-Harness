@@ -330,3 +330,65 @@ def test_evaluation_statistics_isolated_between_evaluations(db):
     assert statistics_two["average_latency_ms"] == 500.0
 
 
+def test_evaluation_statistics_independent_of_run_order(db):
+    evaluation = Evaluation(
+        agent_version_id=uuid.uuid4(),
+        status="completed",
+        trigger_type="manual",
+    )
+    db.add(evaluation)
+    db.commit()
+    db.refresh(evaluation)
+
+    test_case = TestCase(
+        evaluation_id=evaluation.id,
+        name="Run Order Test",
+        category="functional",
+        input_data="Hello",
+        expected_behavior="Successful response",
+        is_adversarial=False,
+    )
+    db.add(test_case)
+    db.commit()
+    db.refresh(test_case)
+
+    run_failed = TestRun(
+        test_case_id=test_case.id,
+        status="failed",
+        result="failed",
+        latency_ms=400,
+    )
+
+    run_passed = TestRun(
+        test_case_id=test_case.id,
+        status="completed",
+        result="passed",
+        latency_ms=100,
+    )
+
+    run_failed_second = TestRun(
+        test_case_id=test_case.id,
+        status="failed",
+        result="failed",
+        latency_ms=200,
+    )
+
+    db.add_all([
+        run_failed,
+        run_passed,
+        run_failed_second,
+    ])
+    db.commit()
+
+    statistics = calculate_evaluation_statistics(
+        evaluation,
+        db,
+    )
+
+    assert statistics["total_runs"] == 3
+    assert statistics["passed_runs"] == 1
+    assert statistics["failed_runs"] == 2
+    assert statistics["average_latency_ms"] == 233.33
+
+
+
