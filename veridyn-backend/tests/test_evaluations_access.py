@@ -110,3 +110,85 @@ def test_create_evaluation_unknown_agent_version(client, authenticated_user_cont
 
     assert response.status_code == 404
     assert response.json().get("detail") == "Agent version not found"
+
+
+def test_get_evaluations_statistics_values(client, authenticated_user_context, db_session):
+    """
+    Test — Evaluation statistics values:
+    Verify that the Evaluation API returns correct statistics
+    for an evaluation with multiple test runs.
+    """
+    from app.models.evaluation import Evaluation
+    from app.models.test_case import TestCase
+    from app.models.test_run import TestRun
+
+    agent_version_id = uuid.UUID(
+        authenticated_user_context["own_agent_version_id"]
+    )
+    headers = authenticated_user_context["headers"]
+
+    evaluation = Evaluation(
+        agent_version_id=agent_version_id,
+        status="completed",
+        trigger_type="manual",
+    )
+    db_session.add(evaluation)
+    db_session.commit()
+    db_session.refresh(evaluation)
+
+    test_case = TestCase(
+        evaluation_id=evaluation.id,
+        name="API Statistics Test",
+        category="functional",
+        input_data="Hello",
+        expected_behavior="Successful response",
+        is_adversarial=False,
+    )
+    db_session.add(test_case)
+    db_session.commit()
+    db_session.refresh(test_case)
+
+    run_one = TestRun(
+        test_case_id=test_case.id,
+        status="completed",
+        result="passed",
+        latency_ms=100,
+    )
+
+    run_two = TestRun(
+        test_case_id=test_case.id,
+        status="completed",
+        result="passed",
+        latency_ms=200,
+    )
+
+    run_three = TestRun(
+        test_case_id=test_case.id,
+        status="failed",
+        result="failed",
+        latency_ms=300,
+    )
+
+    db_session.add_all([run_one, run_two, run_three])
+    db_session.commit()
+
+    response = client.get(
+        f"/evaluations/{agent_version_id}",
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+
+    evaluations = response.json()
+
+    matching_evaluation = next(
+        item
+        for item in evaluations
+        if item["id"] == str(evaluation.id)
+    )
+
+    assert matching_evaluation["total_runs"] == 3
+    assert matching_evaluation["passed_runs"] == 2
+    assert matching_evaluation["failed_runs"] == 1
+    assert matching_evaluation["average_latency_ms"] == 200.0
+
