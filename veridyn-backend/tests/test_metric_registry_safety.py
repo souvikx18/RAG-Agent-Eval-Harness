@@ -1,6 +1,10 @@
 import pytest
 
-from app.services.metrics.base_metric import Metric, MetricContext, MetricResult
+from app.services.metrics.base_metric import (
+    Metric,
+    MetricContext,
+    MetricResult,
+)
 from app.services.metrics.registry import MetricRegistry
 
 
@@ -44,6 +48,27 @@ def test_registry_rejects_duplicate_metric():
         registry.register(TestMetric())
 
 
+def test_duplicate_registration_does_not_change_registry():
+    registry = MetricRegistry()
+
+    first_metric = TestMetric()
+
+    registry.register(first_metric)
+
+    with pytest.raises(
+        ValueError,
+        match="already registered",
+    ):
+        registry.register(TestMetric())
+
+    assert registry.get("test_metric") is first_metric
+    assert registry.names() == [
+        "correctness",
+        "latency",
+        "test_metric",
+    ]
+
+
 def test_registry_rejects_empty_metric_name():
     registry = MetricRegistry()
 
@@ -58,6 +83,7 @@ def test_registry_returns_registered_metric():
     registry = MetricRegistry()
 
     metric = TestMetric()
+
     registry.register(metric)
 
     assert registry.get("test_metric") is metric
