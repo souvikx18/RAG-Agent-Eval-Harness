@@ -4,8 +4,7 @@ from sqlalchemy.orm import Session
 from app.models.evaluation_result import EvaluationResult
 from app.models.test_run import TestRun
 from app.models.test_case import TestCase
-
-from app.services.metrics.registry import metric_registry
+from app.services.metric_execution_service import execute_metrics
 
 
 def create_evaluation_result(
@@ -46,68 +45,47 @@ def create_evaluation_result(
 
     results = []
 
-    correctness_metric = metric_registry.get("correctness")
-    latency_metric = metric_registry.get("latency")
-
     if test_run.status == "failed":
-
-        results.append(
-            EvaluationResult(
-                test_run_id=test_run.id,
-                metric_name=correctness_metric.name,
-                score=0.0,
-                status="failed",
-                explanation=(
-                    test_run.error_message
-                    or "Agent execution failed."
+        results.extend(
+            [
+                EvaluationResult(
+                    test_run_id=test_run.id,
+                    metric_name="correctness",
+                    score=0.0,
+                    status="failed",
+                    explanation=(
+                        test_run.error_message
+                        or "Agent execution failed."
+                    ),
                 ),
-            )
-        )
-
-        results.append(
-            EvaluationResult(
-                test_run_id=test_run.id,
-                metric_name=latency_metric.name,
-                score=0.0,
-                status="failed",
-                explanation=(
-                    "Latency could not be evaluated "
-                    "because agent execution failed."
+                EvaluationResult(
+                    test_run_id=test_run.id,
+                    metric_name="latency",
+                    score=0.0,
+                    status="failed",
+                    explanation=(
+                        "Latency could not be evaluated "
+                        "because agent execution failed."
+                    ),
                 ),
-            )
+            ]
         )
 
     else:
-
-        correctness_result = correctness_metric.evaluate(
-            test_case.expected_behavior,
-            test_run.actual_output,
+        metric_results = execute_metrics(
+            test_case,
+            test_run,
         )
 
-        latency_result = latency_metric.evaluate(
-            None,
-            test_run.actual_output,
-            test_run.latency_ms,
-        )
-
-        results.append(
+        results.extend(
             EvaluationResult(
                 test_run_id=test_run.id,
-                metric_name=correctness_result.metric_name,
-                score=correctness_result.score,
-                status=correctness_result.status,
-                explanation=correctness_result.explanation,
+                metric_name=result["metric_name"],
+                score=result["score"],
+                status=result["status"],
+                explanation=result["explanation"],
             )
-        )
-
-        results.append(
-            EvaluationResult(
-                test_run_id=test_run.id,
-                metric_name=latency_result.metric_name,
-                score=latency_result.score,
-                status=latency_result.status,
-                explanation=latency_result.explanation,
-            )
+            for result in metric_results
         )
 
     db.add_all(results)
