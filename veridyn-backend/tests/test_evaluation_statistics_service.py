@@ -250,3 +250,83 @@ def test_evaluation_statistics_with_multiple_test_cases(db):
     assert statistics["failed_runs"] == 1
     assert statistics["average_latency_ms"] == 200.0
 
+
+def test_evaluation_statistics_isolated_between_evaluations(db):
+    evaluation_one = Evaluation(
+        agent_version_id=uuid.uuid4(),
+        status="completed",
+        trigger_type="manual",
+    )
+
+    evaluation_two = Evaluation(
+        agent_version_id=uuid.uuid4(),
+        status="completed",
+        trigger_type="manual",
+    )
+
+    db.add_all([evaluation_one, evaluation_two])
+    db.commit()
+    db.refresh(evaluation_one)
+    db.refresh(evaluation_two)
+
+    test_case_one = TestCase(
+        evaluation_id=evaluation_one.id,
+        name="Evaluation One Test",
+        category="functional",
+        input_data="Hello",
+        expected_behavior="Successful response",
+        is_adversarial=False,
+    )
+
+    test_case_two = TestCase(
+        evaluation_id=evaluation_two.id,
+        name="Evaluation Two Test",
+        category="functional",
+        input_data="Hello",
+        expected_behavior="Successful response",
+        is_adversarial=False,
+    )
+
+    db.add_all([test_case_one, test_case_two])
+    db.commit()
+    db.refresh(test_case_one)
+    db.refresh(test_case_two)
+
+    run_one = TestRun(
+        test_case_id=test_case_one.id,
+        status="completed",
+        result="passed",
+        latency_ms=100,
+    )
+
+    run_two = TestRun(
+        test_case_id=test_case_two.id,
+        status="failed",
+        result="failed",
+        latency_ms=500,
+    )
+
+    db.add_all([run_one, run_two])
+    db.commit()
+
+    statistics_one = calculate_evaluation_statistics(
+        evaluation_one,
+        db,
+    )
+
+    statistics_two = calculate_evaluation_statistics(
+        evaluation_two,
+        db,
+    )
+
+    assert statistics_one["total_runs"] == 1
+    assert statistics_one["passed_runs"] == 1
+    assert statistics_one["failed_runs"] == 0
+    assert statistics_one["average_latency_ms"] == 100.0
+
+    assert statistics_two["total_runs"] == 1
+    assert statistics_two["passed_runs"] == 0
+    assert statistics_two["failed_runs"] == 1
+    assert statistics_two["average_latency_ms"] == 500.0
+
+
