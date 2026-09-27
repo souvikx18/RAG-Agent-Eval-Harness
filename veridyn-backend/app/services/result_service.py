@@ -5,8 +5,7 @@ from app.models.evaluation_result import EvaluationResult
 from app.models.test_run import TestRun
 from app.models.test_case import TestCase
 
-from app.services.metrics.correctness_metric import CorrectnessMetric
-from app.services.metrics.latency_metric import LatencyMetric
+from app.services.metrics.registry import metric_registry
 
 
 def create_evaluation_result(
@@ -47,26 +46,15 @@ def create_evaluation_result(
 
     results = []
 
-    correctness_metric = CorrectnessMetric()
-    latency_metric = LatencyMetric()
+    correctness_metric = metric_registry.get("correctness")
+    latency_metric = metric_registry.get("latency")
 
     if test_run.status == "failed":
-
-        correctness_result = correctness_metric.evaluate(
-            test_case.expected_behavior,
-            None,
-        )
-
-        latency_result = latency_metric.evaluate(
-            None,
-            None,
-            None,
-        )
 
         results.append(
             EvaluationResult(
                 test_run_id=test_run.id,
-                metric_name=correctness_result.metric_name,
+                metric_name=correctness_metric.name,
                 score=0.0,
                 status="failed",
                 explanation=(
@@ -79,7 +67,7 @@ def create_evaluation_result(
         results.append(
             EvaluationResult(
                 test_run_id=test_run.id,
-                metric_name=latency_result.metric_name,
+                metric_name=latency_metric.name,
                 score=0.0,
                 status="failed",
                 explanation=(
