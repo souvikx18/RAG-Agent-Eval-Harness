@@ -4,17 +4,21 @@ from app.services.metrics.latency_metric import LatencyMetric
 
 
 class MetricRegistry:
-    """
-    Central registry for available evaluation metrics.
-    """
-
-    def __init__(self) -> None:
-        self._metrics: dict[str, Metric] = {}
+    def __init__(self):
+        self._metrics = {}
 
         self.register(CorrectnessMetric())
         self.register(LatencyMetric())
 
     def register(self, metric: Metric) -> None:
+        if not metric.name.strip():
+            raise ValueError("Metric name cannot be empty.")
+
+        if metric.name in self._metrics:
+            raise ValueError(
+                f"Metric '{metric.name}' is already registered."
+            )
+
         self._metrics[metric.name] = metric
 
     def get(self, metric_name: str) -> Metric:
