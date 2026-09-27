@@ -4,10 +4,9 @@ from sqlalchemy.orm import Session
 from app.models.evaluation_result import EvaluationResult
 from app.models.test_run import TestRun
 from app.models.test_case import TestCase
-from app.services.metrics_service import (
-    calculate_correctness_score,
-    calculate_latency_score,
-)
+
+from app.services.metrics.correctness_metric import CorrectnessMetric
+from app.services.metrics.latency_metric import LatencyMetric
 
 
 def create_evaluation_result(
@@ -48,12 +47,26 @@ def create_evaluation_result(
 
     results = []
 
+    correctness_metric = CorrectnessMetric()
+    latency_metric = LatencyMetric()
+
     if test_run.status == "failed":
+
+        correctness_result = correctness_metric.evaluate(
+            test_case.expected_behavior,
+            None,
+        )
+
+        latency_result = latency_metric.evaluate(
+            None,
+            None,
+            None,
+        )
 
         results.append(
             EvaluationResult(
                 test_run_id=test_run.id,
-                metric_name="correctness",
+                metric_name=correctness_result.metric_name,
                 score=0.0,
                 status="failed",
                 explanation=(
@@ -66,7 +79,7 @@ def create_evaluation_result(
         results.append(
             EvaluationResult(
                 test_run_id=test_run.id,
-                metric_name="latency",
+                metric_name=latency_result.metric_name,
                 score=0.0,
                 status="failed",
                 explanation=(
@@ -78,44 +91,34 @@ def create_evaluation_result(
 
     else:
 
-        correctness_score, correctness_explanation = (
-            calculate_correctness_score(
-                test_case.expected_behavior,
-                test_run.actual_output,
-            )
+        correctness_result = correctness_metric.evaluate(
+            test_case.expected_behavior,
+            test_run.actual_output,
         )
 
-        latency_score, latency_explanation = (
-            calculate_latency_score(
-                test_run.latency_ms,
+        latency_result = latency_metric.evaluate(
+            None,
+            test_run.actual_output,
+            test_run.latency_ms,
+        )
+
+        results.append(
+            EvaluationResult(
+                test_run_id=test_run.id,
+                metric_name=correctness_result.metric_name,
+                score=correctness_result.score,
+                status=correctness_result.status,
+                explanation=correctness_result.explanation,
             )
         )
 
         results.append(
             EvaluationResult(
                 test_run_id=test_run.id,
-                metric_name="correctness",
-                score=correctness_score,
-                status=(
-                    "passed"
-                    if correctness_score == 1.0
-                    else "failed"
-                ),
-                explanation=correctness_explanation,
-            )
-        )
-
-        results.append(
-            EvaluationResult(
-                test_run_id=test_run.id,
-                metric_name="latency",
-                score=latency_score,
-                status=(
-                    "passed"
-                    if latency_score >= 0.75
-                    else "failed"
-                ),
-                explanation=latency_explanation,
+                metric_name=latency_result.metric_name,
+                score=latency_result.score,
+                status=latency_result.status,
+                explanation=latency_result.explanation,
             )
         )
 
