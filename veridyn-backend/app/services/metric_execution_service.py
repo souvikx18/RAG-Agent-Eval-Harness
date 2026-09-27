@@ -1,7 +1,6 @@
 from app.models.test_case import TestCase
 from app.models.test_run import TestRun
-
-from app.services.metrics.base_metric import MetricContext
+from app.services.metrics.base_metric import MetricContext, MetricResult
 from app.services.metrics.registry import metric_registry
 
 
@@ -9,10 +8,6 @@ def execute_metrics(
     test_case: TestCase,
     test_run: TestRun,
 ) -> list[dict]:
-    """
-    Execute all registered evaluation metrics for a TestRun.
-    """
-
     context = MetricContext(
         expected_behavior=test_case.expected_behavior,
         actual_output=test_run.actual_output,
@@ -22,7 +17,16 @@ def execute_metrics(
     results = []
 
     for metric in metric_registry.all():
-        metric_result = metric.evaluate(context)
+        try:
+            metric_result = metric.evaluate(context)
+
+        except Exception as exc:
+            metric_result = MetricResult(
+                metric_name=metric.name,
+                score=0.0,
+                status="failed",
+                explanation=f"Metric execution failed: {str(exc)}",
+            )
 
         results.append(
             {
