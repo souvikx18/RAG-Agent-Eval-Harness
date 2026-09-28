@@ -56,6 +56,11 @@ class MetricRegistry:
         metric_name: str,
         config: dict[str, Any],
     ) -> None:
+        if not isinstance(config, dict):
+            raise TypeError(
+                "Metric configuration must be a dictionary."
+            )
+
         metric = self.get(metric_name)
         metric.configure(config)
 

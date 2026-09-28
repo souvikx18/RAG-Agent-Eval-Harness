@@ -1,5 +1,7 @@
 from typing import Any
 
+import pytest
+
 from app.services.metrics.base_metric import (
     Metric,
     MetricContext,
@@ -90,3 +92,64 @@ def test_custom_metric_configuration_is_included():
             "dummy_flag": True,
         }
     }
+
+
+def test_registry_rejects_none_configuration():
+    registry = MetricRegistry()
+
+    with pytest.raises(
+        TypeError,
+        match="Metric configuration must be a dictionary",
+    ):
+        registry.configure(
+            "latency",
+            None,
+        )
+
+
+def test_registry_rejects_string_configuration():
+    registry = MetricRegistry()
+
+    with pytest.raises(
+        TypeError,
+        match="Metric configuration must be a dictionary",
+    ):
+        registry.configure(
+            "latency",
+            "invalid",
+        )
+
+
+def test_registry_rejects_list_configuration():
+    registry = MetricRegistry()
+
+    with pytest.raises(
+        TypeError,
+        match="Metric configuration must be a dictionary",
+    ):
+        registry.configure(
+            "latency",
+            [],
+        )
+
+
+def test_invalid_configuration_does_not_change_metric():
+    registry = MetricRegistry()
+
+    original_configuration = (
+        registry.get("latency").get_configuration()
+    )
+
+    with pytest.raises(
+        TypeError,
+        match="Metric configuration must be a dictionary",
+    ):
+        registry.configure(
+            "latency",
+            None,
+        )
+
+    assert (
+        registry.get("latency").get_configuration()
+        == original_configuration
+    )
