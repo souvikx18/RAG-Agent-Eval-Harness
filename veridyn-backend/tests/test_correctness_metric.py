@@ -1,3 +1,5 @@
+import pytest
+
 from app.services.metrics.base_metric import MetricContext
 from app.services.metrics.correctness_metric import CorrectnessMetric
 
@@ -77,3 +79,71 @@ def test_correctness_metric_is_case_insensitive():
 
     assert result.score == 1.0
     assert result.status == "passed"
+
+
+def test_correctness_metric_default_configuration():
+    metric = CorrectnessMetric()
+
+    assert metric.case_sensitive is False
+
+
+def test_correctness_metric_can_enable_case_sensitive_matching():
+    metric = CorrectnessMetric()
+
+    metric.configure(
+        {
+            "case_sensitive": True,
+        }
+    )
+
+    assert metric.case_sensitive is True
+
+
+def test_correctness_metric_case_sensitive_matching():
+    metric = CorrectnessMetric()
+
+    metric.configure(
+        {
+            "case_sensitive": True,
+        }
+    )
+
+    result = metric.evaluate(
+        MetricContext(
+            expected_behavior="Hello World",
+            actual_output="hello world",
+            latency_ms=100,
+        )
+    )
+
+    assert result.score == 0.0
+    assert result.status == "failed"
+
+
+def test_correctness_metric_case_insensitive_by_default():
+    metric = CorrectnessMetric()
+
+    result = metric.evaluate(
+        MetricContext(
+            expected_behavior="Hello World",
+            actual_output="hello world",
+            latency_ms=100,
+        )
+    )
+
+    assert result.score == 1.0
+    assert result.status == "passed"
+
+
+def test_correctness_metric_rejects_invalid_configuration():
+    metric = CorrectnessMetric()
+
+    with pytest.raises(
+        ValueError,
+        match="case_sensitive must be a boolean",
+    ):
+        metric.configure(
+            {
+                "case_sensitive": "true",
+            }
+        )
