@@ -14,6 +14,20 @@ class LatencyMetric(Metric):
         return "latency"
 
     def configure(self, config: dict[str, Any]) -> None:
+        allowed_keys = {
+            "fast_threshold_ms",
+            "acceptable_threshold_ms",
+            "high_threshold_ms",
+        }
+
+        unknown_keys = set(config) - allowed_keys
+
+        if unknown_keys:
+            raise ValueError(
+                f"Unknown latency configuration keys: "
+                f"{sorted(unknown_keys)}"
+            )
+
         fast_threshold = config.get(
             "fast_threshold_ms",
             self.fast_threshold_ms,

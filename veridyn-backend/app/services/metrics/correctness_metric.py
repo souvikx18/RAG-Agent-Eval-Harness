@@ -16,6 +16,18 @@ class CorrectnessMetric(Metric):
         return "correctness"
 
     def configure(self, config: dict[str, Any]) -> None:
+        allowed_keys = {
+            "case_sensitive",
+        }
+
+        unknown_keys = set(config) - allowed_keys
+
+        if unknown_keys:
+            raise ValueError(
+                f"Unknown correctness configuration keys: "
+                f"{sorted(unknown_keys)}"
+            )
+
         case_sensitive = config.get(
             "case_sensitive",
             self.case_sensitive,

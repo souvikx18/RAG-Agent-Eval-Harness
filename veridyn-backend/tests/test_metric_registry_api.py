@@ -119,7 +119,7 @@ def test_registry_can_configure_metric():
     registry.configure(
         "correctness",
         {
-            "threshold": 0.8,
+            "case_sensitive": True,
         },
     )
 

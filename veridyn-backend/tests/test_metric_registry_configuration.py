@@ -153,3 +153,84 @@ def test_invalid_configuration_does_not_change_metric():
         registry.get("latency").get_configuration()
         == original_configuration
     )
+
+
+def test_latency_rejects_unknown_configuration_key():
+    registry = MetricRegistry()
+
+    with pytest.raises(
+        ValueError,
+        match="Unknown latency configuration keys",
+    ):
+        registry.configure(
+            "latency",
+            {
+                "fast_threshold_ms": 300,
+                "unknown_setting": 123,
+            },
+        )
+
+
+def test_correctness_rejects_unknown_configuration_key():
+    registry = MetricRegistry()
+
+    with pytest.raises(
+        ValueError,
+        match="Unknown correctness configuration keys",
+    ):
+        registry.configure(
+            "correctness",
+            {
+                "case_sensitive": True,
+                "unknown_setting": True,
+            },
+        )
+
+
+def test_unknown_configuration_does_not_change_latency():
+    registry = MetricRegistry()
+
+    original = registry.get(
+        "latency"
+    ).get_configuration()
+
+    with pytest.raises(
+        ValueError,
+        match="Unknown latency configuration keys",
+    ):
+        registry.configure(
+            "latency",
+            {
+                "invalid_threshold": 100,
+            },
+        )
+
+    assert (
+        registry.get("latency").get_configuration()
+        == original
+    )
+
+
+def test_unknown_configuration_does_not_change_correctness():
+    registry = MetricRegistry()
+
+    original = registry.get(
+        "correctness"
+    ).get_configuration()
+
+    with pytest.raises(
+        ValueError,
+        match="Unknown correctness configuration keys",
+    ):
+        registry.configure(
+            "correctness",
+            {
+                "invalid_option": True,
+            },
+        )
+
+    assert (
+        registry.get("correctness").get_configuration()
+        == original
+    )
+
