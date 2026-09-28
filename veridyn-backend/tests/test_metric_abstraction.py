@@ -1,4 +1,4 @@
-from app.services.metrics.base_metric import Metric, MetricResult
+from app.services.metrics.base_metric import Metric, MetricContext, MetricResult
 
 
 class DummyMetric(Metric):
@@ -9,8 +9,8 @@ class DummyMetric(Metric):
 
     def evaluate(
         self,
-        expected_behavior: str | None,
-        actual_output: str | None,
+        expected_behavior: str | None | MetricContext = None,
+        actual_output: str | None = None,
     ) -> MetricResult:
         return MetricResult(
             metric_name=self.name,
@@ -18,6 +18,9 @@ class DummyMetric(Metric):
             status="passed",
             explanation="Dummy metric passed.",
         )
+
+
+TestMetric = DummyMetric
 
 
 def test_metric_result_structure():
@@ -46,3 +49,29 @@ def test_metric_abstraction():
     assert result.metric_name == "dummy"
     assert result.score == 1.0
     assert result.status == "passed"
+
+
+def test_metric_configuration_is_optional():
+    metric = DummyMetric()
+
+    metric.configure(
+        {
+            "threshold": 0.8,
+        }
+    )
+
+
+def test_metric_configuration_does_not_change_default_behavior():
+    metric = DummyMetric()
+
+    metric.configure({})
+
+    result = metric.evaluate(
+        MetricContext(
+            expected_behavior="expected",
+            actual_output="expected",
+            latency_ms=100,
+        )
+    )
+
+    assert result.score == 1.0

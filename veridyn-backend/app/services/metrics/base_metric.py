@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from typing import Any
 
 
 @dataclass
@@ -52,3 +53,12 @@ class Metric(ABC):
         context: MetricContext,
     ) -> MetricResult:
         pass
+
+    def configure(self, config: dict[str, Any]) -> None:
+        """
+        Configure the metric.
+
+        Metrics that support configuration can override this method.
+        Metrics without configurable settings ignore the configuration.
+        """
+        return None
