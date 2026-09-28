@@ -59,5 +59,12 @@ class MetricRegistry:
         metric = self.get(metric_name)
         metric.configure(config)
 
+    def get_configurations(self) -> dict[str, dict[str, Any]]:
+        return {
+            metric.name: metric.get_configuration()
+            for metric in self._metrics.values()
+        }
+
 
 metric_registry = MetricRegistry()
+
