@@ -63,6 +63,13 @@ class LatencyMetric(Metric):
         self.acceptable_threshold_ms = acceptable_threshold
         self.high_threshold_ms = high_threshold
 
+    def get_configuration(self) -> dict[str, Any]:
+        return {
+            "fast_threshold_ms": self.fast_threshold_ms,
+            "acceptable_threshold_ms": self.acceptable_threshold_ms,
+            "high_threshold_ms": self.high_threshold_ms,
+        }
+
     def evaluate(
         self,
         context: MetricContext,

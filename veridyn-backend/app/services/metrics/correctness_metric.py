@@ -28,6 +28,11 @@ class CorrectnessMetric(Metric):
 
         self.case_sensitive = case_sensitive
 
+    def get_configuration(self) -> dict[str, Any]:
+        return {
+            "case_sensitive": self.case_sensitive,
+        }
+
     def evaluate(
         self,
         context: MetricContext,

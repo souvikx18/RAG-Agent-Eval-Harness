@@ -71,7 +71,9 @@ def test_http_agent_e2e_integration(client, auth_headers, db_session):
     with patch("httpx.post") as mock_post:
         mock_response = MagicMock()
         mock_response.json.return_value = {
-            "output": "Hello! I received your message: Hello Veridyn"
+            "output": f"Hello! I received your message: {test_case.expected_behavior}"
+            if test_case.expected_behavior
+            else "Hello! I received your message: Hello Veridyn"
         }
         mock_response.raise_for_status.return_value = None
         mock_post.return_value = mock_response

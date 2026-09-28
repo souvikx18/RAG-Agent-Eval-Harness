@@ -62,3 +62,12 @@ class Metric(ABC):
         Metrics without configurable settings ignore the configuration.
         """
         return None
+
+    def get_configuration(self) -> dict[str, Any]:
+        """
+        Return the current metric configuration.
+
+        Metrics that expose configurable settings should override this
+        method. The default implementation returns an empty configuration.
+        """
+        return {}
