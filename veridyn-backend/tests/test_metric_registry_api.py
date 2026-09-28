@@ -111,3 +111,27 @@ def test_registry_without_defaults_can_register_custom_metric():
 
     assert registry.get("test_metric") is metric
     assert registry.names() == ["test_metric"]
+
+
+def test_registry_can_configure_metric():
+    registry = MetricRegistry()
+
+    registry.configure(
+        "correctness",
+        {
+            "threshold": 0.8,
+        },
+    )
+
+
+def test_registry_configuration_unknown_metric_fails():
+    registry = MetricRegistry()
+
+    with pytest.raises(
+        ValueError,
+        match="Unknown metric",
+    ):
+        registry.configure(
+            "does_not_exist",
+            {},
+        )

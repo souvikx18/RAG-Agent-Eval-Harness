@@ -1,3 +1,5 @@
+from typing import Any
+
 from app.services.metrics.base_metric import Metric
 from app.services.metrics.correctness_metric import CorrectnessMetric
 from app.services.metrics.latency_metric import LatencyMetric
@@ -48,6 +50,14 @@ class MetricRegistry:
 
         self.register(CorrectnessMetric())
         self.register(LatencyMetric())
+
+    def configure(
+        self,
+        metric_name: str,
+        config: dict[str, Any],
+    ) -> None:
+        metric = self.get(metric_name)
+        metric.configure(config)
 
 
 metric_registry = MetricRegistry()
