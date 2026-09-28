@@ -147,3 +147,20 @@ def test_correctness_metric_rejects_invalid_configuration():
                 "case_sensitive": "true",
             }
         )
+
+
+def test_correctness_partial_configuration_preserves_other_values():
+    metric = CorrectnessMetric()
+
+    metric.configure(
+        {
+            "case_sensitive": True,
+        }
+    )
+
+    assert metric.case_sensitive is True
+
+    metric.configure({})
+
+    assert metric.case_sensitive is True
+

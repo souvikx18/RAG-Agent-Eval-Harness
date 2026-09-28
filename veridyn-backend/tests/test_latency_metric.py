@@ -158,3 +158,40 @@ def test_latency_metric_rejects_negative_threshold():
                 "high_threshold_ms": 2000,
             }
         )
+
+
+def test_latency_partial_configuration_preserves_other_values():
+    metric = LatencyMetric()
+
+    metric.configure(
+        {
+            "fast_threshold_ms": 300,
+        }
+    )
+
+    assert metric.fast_threshold_ms == 300
+    assert metric.acceptable_threshold_ms == 1000
+    assert metric.high_threshold_ms == 2000
+
+
+def test_latency_configuration_can_be_applied_incrementally():
+    metric = LatencyMetric()
+
+    metric.configure(
+        {
+            "fast_threshold_ms": 300,
+            "acceptable_threshold_ms": 600,
+            "high_threshold_ms": 1200,
+        }
+    )
+
+    metric.configure(
+        {
+            "fast_threshold_ms": 200,
+        }
+    )
+
+    assert metric.fast_threshold_ms == 200
+    assert metric.acceptable_threshold_ms == 600
+    assert metric.high_threshold_ms == 1200
+
