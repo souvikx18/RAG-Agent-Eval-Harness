@@ -57,6 +57,8 @@ def create_evaluation_result(
                         test_run.error_message
                         or "Agent execution failed."
                     ),
+                    configuration_version=1,
+                    configuration={},
                 ),
                 EvaluationResult(
                     test_run_id=test_run.id,
@@ -67,6 +69,8 @@ def create_evaluation_result(
                         "Latency could not be evaluated "
                         "because agent execution failed."
                     ),
+                    configuration_version=1,
+                    configuration={},
                 ),
             ]
         )
@@ -87,6 +91,12 @@ def create_evaluation_result(
                     score=metric_result.score,
                     status=metric_result.status,
                     explanation=metric_result.explanation,
+                    configuration_version=(
+                        metric_execution_result.configuration_version
+                    ),
+                    configuration=(
+                        metric_execution_result.configuration
+                    ),
                 )
             )
 

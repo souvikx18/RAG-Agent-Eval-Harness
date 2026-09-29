@@ -1,7 +1,8 @@
 import uuid
 from datetime import datetime, timezone
+from typing import Any
 
-from sqlalchemy import DateTime, Float, ForeignKey, String, Text
+from sqlalchemy import DateTime, Float, ForeignKey, Integer, JSON, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -42,6 +43,18 @@ class EvaluationResult(Base):
     explanation: Mapped[str | None] = mapped_column(
         Text,
         nullable=True,
+    )
+
+    configuration_version: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=1,
+    )
+
+    configuration: Mapped[dict[str, Any]] = mapped_column(
+        JSON,
+        nullable=False,
+        default=dict,
     )
 
     created_at: Mapped[datetime] = mapped_column(
