@@ -72,21 +72,23 @@ def create_evaluation_result(
         )
 
     else:
-        metric_results = execute_metrics(
+        metric_execution_results = execute_metrics(
             test_case,
             test_run,
         )
 
-        results.extend(
-            EvaluationResult(
-                test_run_id=test_run.id,
-                metric_name=result["metric_name"],
-                score=result["score"],
-                status=result["status"],
-                explanation=result["explanation"],
+        for metric_execution_result in metric_execution_results:
+            metric_result = metric_execution_result.metric_result
+
+            results.append(
+                EvaluationResult(
+                    test_run_id=test_run.id,
+                    metric_name=metric_result.metric_name,
+                    score=metric_result.score,
+                    status=metric_result.status,
+                    explanation=metric_result.explanation,
+                )
             )
-            for result in metric_results
-        )
 
     db.add_all(results)
     db.commit()

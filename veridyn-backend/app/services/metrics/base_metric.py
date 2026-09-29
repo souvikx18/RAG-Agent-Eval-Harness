@@ -37,6 +37,13 @@ class MetricResult:
             )
 
 
+@dataclass
+class MetricExecutionResult:
+    metric_result: MetricResult
+    configuration_version: int
+    configuration: dict[str, Any]
+
+
 class Metric(ABC):
     """
     Base abstraction for evaluation metrics.

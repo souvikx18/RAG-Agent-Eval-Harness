@@ -36,17 +36,17 @@ def test_metric_execution_converts_exception_to_failed_result():
         failing_result = next(
             result
             for result in results
-            if result["metric_name"] == "failing_metric"
+            if result.metric_result.metric_name == "failing_metric"
         )
 
-        assert failing_result["score"] == 0.0
-        assert failing_result["status"] == "failed"
+        assert failing_result.metric_result.score == 0.0
+        assert failing_result.metric_result.status == "failed"
         assert (
-            failing_result["explanation"]
+            failing_result.metric_result.explanation
             == "Metric execution failed: Intentional metric failure"
         )
-        assert failing_result["configuration_version"] == 1
-        assert failing_result["configuration"] == {}
+        assert failing_result.configuration_version == 1
+        assert failing_result.configuration == {}
 
     finally:
         metric_registry.reset()
@@ -69,7 +69,7 @@ def test_metric_failure_does_not_stop_other_metrics():
         results = execute_metrics(test_case, test_run)
 
         metric_names = {
-            result["metric_name"]
+            result.metric_result.metric_name
             for result in results
         }
 

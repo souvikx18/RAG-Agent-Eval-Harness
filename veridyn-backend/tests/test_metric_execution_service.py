@@ -32,7 +32,7 @@ def test_execute_metrics_returns_correctness_and_latency():
     assert len(results) == 2
 
     metric_names = {
-        result["metric_name"]
+        result.metric_result.metric_name
         for result in results
     }
 
@@ -66,12 +66,12 @@ def test_execute_metrics_returns_expected_scores():
     )
 
     results_by_name = {
-        result["metric_name"]: result
+        result.metric_result.metric_name: result.metric_result
         for result in results
     }
 
-    assert results_by_name["correctness"]["score"] == 1.0
-    assert results_by_name["latency"]["score"] == 1.0
+    assert results_by_name["correctness"].score == 1.0
+    assert results_by_name["latency"].score == 1.0
 
 
 def test_execute_metrics_handles_failed_output():
@@ -98,12 +98,12 @@ def test_execute_metrics_handles_failed_output():
     )
 
     results_by_name = {
-        result["metric_name"]: result
+        result.metric_result.metric_name: result.metric_result
         for result in results
     }
 
-    assert results_by_name["correctness"]["score"] == 0.0
-    assert results_by_name["latency"]["score"] == 0.0
+    assert results_by_name["correctness"].score == 0.0
+    assert results_by_name["latency"].score == 0.0
 
 
 def test_metric_execution_includes_configuration_snapshot():
@@ -127,22 +127,22 @@ def test_metric_execution_includes_configuration_snapshot():
     correctness_result = next(
         result
         for result in results
-        if result["metric_name"] == "correctness"
+        if result.metric_result.metric_name == "correctness"
     )
 
     latency_result = next(
         result
         for result in results
-        if result["metric_name"] == "latency"
+        if result.metric_result.metric_name == "latency"
     )
 
-    assert correctness_result["configuration_version"] == 1
-    assert correctness_result["configuration"] == {
+    assert correctness_result.configuration_version == 1
+    assert correctness_result.configuration == {
         "case_sensitive": False,
     }
 
-    assert latency_result["configuration_version"] == 1
-    assert latency_result["configuration"] == {
+    assert latency_result.configuration_version == 1
+    assert latency_result.configuration == {
         "fast_threshold_ms": 500,
         "acceptable_threshold_ms": 1000,
         "high_threshold_ms": 2000,
@@ -181,20 +181,19 @@ def test_metric_execution_reflects_configured_metric():
         correctness_result = next(
             result
             for result in results
-            if result["metric_name"] == "correctness"
+            if result.metric_result.metric_name == "correctness"
         )
 
         assert (
-            correctness_result["configuration_version"]
+            correctness_result.configuration_version
             == 2
         )
 
-        assert correctness_result["configuration"] == {
+        assert correctness_result.configuration == {
             "case_sensitive": True,
         }
 
-        assert correctness_result["score"] == 0.0
+        assert correctness_result.metric_result.score == 0.0
 
     finally:
         metric_registry.reset()
-
