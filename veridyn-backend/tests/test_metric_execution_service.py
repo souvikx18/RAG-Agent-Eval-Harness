@@ -2,7 +2,10 @@ import uuid
 
 from app.models.test_case import TestCase
 from app.models.test_run import TestRun
-from app.services.metric_execution_service import execute_metrics
+from app.services.metric_execution_service import (
+    execute_metrics,
+    execute_metrics_as_dicts,
+)
 from app.services.metrics.registry import metric_registry
 
 
@@ -197,3 +200,34 @@ def test_metric_execution_reflects_configured_metric():
 
     finally:
         metric_registry.reset()
+
+
+def test_execute_metrics_as_dicts_returns_serialized_results():
+    test_case = TestCase(
+        input_data="Test input",
+        expected_behavior="Expected output",
+    )
+
+    test_run = TestRun(
+        actual_output="Expected output",
+        latency_ms=100,
+    )
+
+    results = execute_metrics_as_dicts(
+        test_case,
+        test_run,
+    )
+
+    correctness_result = next(
+        result
+        for result in results
+        if result["metric_name"] == "correctness"
+    )
+
+    assert correctness_result["score"] == 1.0
+    assert correctness_result["status"] == "passed"
+    assert correctness_result["configuration_version"] == 1
+    assert correctness_result["configuration"] == {
+        "case_sensitive": False,
+    }
+

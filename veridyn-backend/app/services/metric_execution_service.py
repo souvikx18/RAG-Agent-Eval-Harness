@@ -47,3 +47,17 @@ def execute_metrics(
         )
 
     return results
+
+
+def execute_metrics_as_dicts(
+    test_case: TestCase,
+    test_run: TestRun,
+) -> list[dict]:
+    return [
+        result.to_dict()
+        for result in execute_metrics(
+            test_case,
+            test_run,
+        )
+    ]
+
