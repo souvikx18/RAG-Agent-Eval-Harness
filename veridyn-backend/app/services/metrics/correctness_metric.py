@@ -9,6 +9,7 @@ from app.services.metrics.base_metric import (
 
 class CorrectnessMetric(Metric):
     def __init__(self) -> None:
+        super().__init__()
         self.case_sensitive = False
 
     @property
@@ -39,6 +40,8 @@ class CorrectnessMetric(Metric):
             )
 
         self.case_sensitive = case_sensitive
+
+        self._increment_configuration_version()
 
     def get_configuration(self) -> dict[str, Any]:
         return {

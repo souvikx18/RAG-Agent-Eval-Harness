@@ -42,6 +42,11 @@ class Metric(ABC):
     Base abstraction for evaluation metrics.
     """
 
+    _configuration_version: int = 1
+
+    def __init__(self) -> None:
+        self._configuration_version = 1
+
     @property
     @abstractmethod
     def name(self) -> str:
@@ -59,15 +64,20 @@ class Metric(ABC):
         Configure the metric.
 
         Metrics that support configuration can override this method.
-        Metrics without configurable settings ignore the configuration.
         """
         return None
 
     def get_configuration(self) -> dict[str, Any]:
         """
         Return the current metric configuration.
-
-        Metrics that expose configurable settings should override this
-        method. The default implementation returns an empty configuration.
         """
         return {}
+
+    def get_configuration_version(self) -> int:
+        """
+        Return the current configuration version.
+        """
+        return self._configuration_version
+
+    def _increment_configuration_version(self) -> None:
+        self._configuration_version += 1

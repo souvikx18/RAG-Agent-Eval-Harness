@@ -5,6 +5,7 @@ from app.services.metrics.base_metric import Metric, MetricContext, MetricResult
 
 class LatencyMetric(Metric):
     def __init__(self) -> None:
+        super().__init__()
         self.fast_threshold_ms = 500
         self.acceptable_threshold_ms = 1000
         self.high_threshold_ms = 2000
@@ -76,6 +77,8 @@ class LatencyMetric(Metric):
         self.fast_threshold_ms = fast_threshold
         self.acceptable_threshold_ms = acceptable_threshold
         self.high_threshold_ms = high_threshold
+
+        self._increment_configuration_version()
 
     def get_configuration(self) -> dict[str, Any]:
         return {
