@@ -45,6 +45,8 @@ def test_metric_execution_converts_exception_to_failed_result():
             failing_result["explanation"]
             == "Metric execution failed: Intentional metric failure"
         )
+        assert failing_result["configuration_version"] == 1
+        assert failing_result["configuration"] == {}
 
     finally:
         metric_registry.reset()

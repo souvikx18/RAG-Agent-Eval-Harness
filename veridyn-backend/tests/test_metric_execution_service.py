@@ -3,6 +3,7 @@ import uuid
 from app.models.test_case import TestCase
 from app.models.test_run import TestRun
 from app.services.metric_execution_service import execute_metrics
+from app.services.metrics.registry import metric_registry
 
 
 def test_execute_metrics_returns_correctness_and_latency():
@@ -103,3 +104,97 @@ def test_execute_metrics_handles_failed_output():
 
     assert results_by_name["correctness"]["score"] == 0.0
     assert results_by_name["latency"]["score"] == 0.0
+
+
+def test_metric_execution_includes_configuration_snapshot():
+    metric_registry.reset()
+
+    test_case = TestCase(
+        input_data="Test input",
+        expected_behavior="Expected output",
+    )
+
+    test_run = TestRun(
+        actual_output="Expected output",
+        latency_ms=100,
+    )
+
+    results = execute_metrics(
+        test_case,
+        test_run,
+    )
+
+    correctness_result = next(
+        result
+        for result in results
+        if result["metric_name"] == "correctness"
+    )
+
+    latency_result = next(
+        result
+        for result in results
+        if result["metric_name"] == "latency"
+    )
+
+    assert correctness_result["configuration_version"] == 1
+    assert correctness_result["configuration"] == {
+        "case_sensitive": False,
+    }
+
+    assert latency_result["configuration_version"] == 1
+    assert latency_result["configuration"] == {
+        "fast_threshold_ms": 500,
+        "acceptable_threshold_ms": 1000,
+        "high_threshold_ms": 2000,
+    }
+
+
+def test_metric_execution_reflects_configured_metric():
+    metric_registry.reset()
+    original_correctness = metric_registry.get(
+        "correctness"
+    ).get_configuration()
+
+    try:
+        metric_registry.configure(
+            "correctness",
+            {
+                "case_sensitive": True,
+            },
+        )
+
+        test_case = TestCase(
+            input_data="Test input",
+            expected_behavior="Hello",
+        )
+
+        test_run = TestRun(
+            actual_output="hello",
+            latency_ms=100,
+        )
+
+        results = execute_metrics(
+            test_case,
+            test_run,
+        )
+
+        correctness_result = next(
+            result
+            for result in results
+            if result["metric_name"] == "correctness"
+        )
+
+        assert (
+            correctness_result["configuration_version"]
+            == 2
+        )
+
+        assert correctness_result["configuration"] == {
+            "case_sensitive": True,
+        }
+
+        assert correctness_result["score"] == 0.0
+
+    finally:
+        metric_registry.reset()
+
