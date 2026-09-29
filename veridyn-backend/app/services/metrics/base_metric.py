@@ -43,6 +43,17 @@ class MetricExecutionResult:
     configuration_version: int
     configuration: dict[str, Any]
 
+    def __post_init__(self) -> None:
+        if self.configuration_version < 1:
+            raise ValueError(
+                "Configuration version must be at least 1."
+            )
+
+        if not isinstance(self.configuration, dict):
+            raise TypeError(
+                "Metric configuration must be a dictionary."
+            )
+
 
 class Metric(ABC):
     """
