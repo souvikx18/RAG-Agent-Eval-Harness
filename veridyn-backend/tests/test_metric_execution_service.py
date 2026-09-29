@@ -231,3 +231,33 @@ def test_execute_metrics_as_dicts_returns_serialized_results():
         "case_sensitive": False,
     }
 
+
+def test_execute_metrics_as_dicts_matches_execution_results():
+    test_case = TestCase(
+        input_data="Test input",
+        expected_behavior="Expected output",
+    )
+
+    test_run = TestRun(
+        actual_output="Expected output",
+        latency_ms=100,
+    )
+
+    object_results = execute_metrics(
+        test_case,
+        test_run,
+    )
+
+    dictionary_results = execute_metrics_as_dicts(
+        test_case,
+        test_run,
+    )
+
+    expected = [
+        result.to_dict()
+        for result in object_results
+    ]
+
+    assert dictionary_results == expected
+
+
