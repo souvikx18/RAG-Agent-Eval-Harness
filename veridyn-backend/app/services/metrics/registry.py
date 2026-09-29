@@ -70,6 +70,18 @@ class MetricRegistry:
             for metric in self._metrics.values()
         }
 
+    def get_configuration_snapshot(
+        self,
+    ) -> dict[str, dict[str, Any]]:
+        return {
+            metric.name: {
+                "version": metric.get_configuration_version(),
+                "configuration": metric.get_configuration(),
+            }
+            for metric in self._metrics.values()
+        }
+
 
 metric_registry = MetricRegistry()
+
 
