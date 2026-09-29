@@ -59,6 +59,16 @@ class MetricExecutionResult:
             self.configuration
         )
 
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "metric_name": self.metric_result.metric_name,
+            "score": self.metric_result.score,
+            "status": self.metric_result.status,
+            "explanation": self.metric_result.explanation,
+            "configuration_version": self.configuration_version,
+            "configuration": deepcopy(self.configuration),
+        }
+
 
 class Metric(ABC):
     """
