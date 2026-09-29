@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from copy import deepcopy
 from dataclasses import dataclass
 from typing import Any
 
@@ -53,6 +54,10 @@ class MetricExecutionResult:
             raise TypeError(
                 "Metric configuration must be a dictionary."
             )
+
+        self.configuration = deepcopy(
+            self.configuration
+        )
 
 
 class Metric(ABC):
