@@ -150,3 +150,57 @@ def test_create_evaluation_result_reflects_metric_configuration(db):
 
     finally:
         metric_registry.reset()
+
+
+def test_metric_configuration_persistence_verification(db):
+    metric_registry.reset()
+
+    try:
+        metric_registry.configure(
+            "correctness",
+            {"case_sensitive": True},
+        )
+
+        test_case = TestCase(
+            id=uuid.uuid4(),
+            evaluation_id=uuid.uuid4(),
+            name="Persistence Verification Case",
+            category="functional",
+            input_data="Sample input",
+            expected_behavior="Sample output",
+            is_adversarial=False,
+        )
+        db.add(test_case)
+        db.commit()
+
+        test_run = TestRun(
+            id=uuid.uuid4(),
+            test_case_id=test_case.id,
+            status="completed",
+            actual_output="Sample output",
+            latency_ms=150,
+            result="passed",
+        )
+        db.add(test_run)
+        db.commit()
+
+        create_evaluation_result(test_run, db)
+
+        persisted_results = (
+            db.query(EvaluationResult)
+            .filter(EvaluationResult.test_run_id == test_run.id)
+            .all()
+        )
+
+        correctness_result = next(
+            r for r in persisted_results if r.metric_name == "correctness"
+        )
+
+        assert correctness_result.configuration_version == 2
+        assert correctness_result.configuration == {
+            "case_sensitive": True,
+        }
+
+    finally:
+        metric_registry.reset()
+
