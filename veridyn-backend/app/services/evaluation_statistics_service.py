@@ -1,8 +1,10 @@
 from sqlalchemy.orm import Session
 
 from app.models.evaluation import Evaluation
+from app.models.evaluation_result import EvaluationResult
 from app.models.test_case import TestCase
 from app.models.test_run import TestRun
+
 
 
 def calculate_evaluation_statistics(
@@ -67,3 +69,34 @@ def calculate_evaluation_statistics(
         "failed_runs": failed_runs,
         "average_latency_ms": round(average_latency_ms, 2),
     }
+
+
+def get_evaluation_metric_configurations(
+    evaluation: Evaluation,
+    db: Session,
+) -> dict:
+    """
+    Retrieve the metric configurations used during an evaluation.
+
+    Groups persisted EvaluationResult records by metric_name and
+    returns their configuration version and configuration snapshot.
+    """
+    evaluation_results = (
+        db.query(EvaluationResult)
+        .join(TestRun, EvaluationResult.test_run_id == TestRun.id)
+        .join(TestCase, TestRun.test_case_id == TestCase.id)
+        .filter(TestCase.evaluation_id == evaluation.id)
+        .order_by(EvaluationResult.created_at.asc())
+        .all()
+    )
+
+    metric_configurations: dict[str, dict] = {}
+
+    for result in evaluation_results:
+        metric_configurations[result.metric_name] = {
+            "version": result.configuration_version,
+            "configuration": result.configuration,
+        }
+
+    return metric_configurations
+

@@ -1,11 +1,14 @@
 import uuid
 
 from app.models.evaluation import Evaluation
+from app.models.evaluation_result import EvaluationResult
 from app.models.test_case import TestCase
 from app.models.test_run import TestRun
 from app.services.evaluation_statistics_service import (
     calculate_evaluation_statistics,
+    get_evaluation_metric_configurations,
 )
+
 
 
 def test_calculate_evaluation_statistics(db):
@@ -524,6 +527,184 @@ def test_evaluation_statistics_with_mixed_run_states(db):
     assert statistics["passed_runs"] == 3
     assert statistics["failed_runs"] == 2
     assert statistics["average_latency_ms"] == 250.0
+
+
+def test_get_evaluation_metric_configurations_no_results(db):
+    evaluation = Evaluation(
+        agent_version_id=uuid.uuid4(),
+        status="completed",
+        trigger_type="manual",
+    )
+    db.add(evaluation)
+    db.commit()
+    db.refresh(evaluation)
+
+    configs = get_evaluation_metric_configurations(evaluation, db)
+    assert configs == {}
+
+
+def test_get_evaluation_metric_configurations_multiple_metrics(db):
+    evaluation = Evaluation(
+        agent_version_id=uuid.uuid4(),
+        status="completed",
+        trigger_type="manual",
+    )
+    db.add(evaluation)
+    db.commit()
+    db.refresh(evaluation)
+
+    test_case = TestCase(
+        evaluation_id=evaluation.id,
+        name="Multi Metric Test Case",
+        category="functional",
+        input_data="input data",
+        expected_behavior="expected output",
+    )
+    db.add(test_case)
+    db.commit()
+    db.refresh(test_case)
+
+    test_run = TestRun(
+        test_case_id=test_case.id,
+        status="completed",
+        result="passed",
+        actual_output="actual output",
+        latency_ms=120,
+    )
+    db.add(test_run)
+    db.commit()
+    db.refresh(test_run)
+
+    res_correctness = EvaluationResult(
+        test_run_id=test_run.id,
+        metric_name="correctness",
+        score=1.0,
+        status="passed",
+        explanation="Accurate response",
+        configuration_version=2,
+        configuration={
+            "case_sensitive": True,
+        },
+    )
+
+    res_latency = EvaluationResult(
+        test_run_id=test_run.id,
+        metric_name="latency",
+        score=0.9,
+        status="passed",
+        explanation="Low latency execution",
+        configuration_version=3,
+        configuration={
+            "fast_threshold_ms": 300,
+            "acceptable_threshold_ms": 800,
+            "high_threshold_ms": 1500,
+        },
+    )
+
+    db.add_all([res_correctness, res_latency])
+    db.commit()
+
+    configs = get_evaluation_metric_configurations(evaluation, db)
+
+    expected = {
+        "correctness": {
+            "version": 2,
+            "configuration": {
+                "case_sensitive": True,
+            },
+        },
+        "latency": {
+            "version": 3,
+            "configuration": {
+                "fast_threshold_ms": 300,
+                "acceptable_threshold_ms": 800,
+                "high_threshold_ms": 1500,
+            },
+        },
+    }
+
+    assert configs == expected
+
+
+def test_get_evaluation_metric_configurations_isolation(db):
+    eval_a = Evaluation(
+        agent_version_id=uuid.uuid4(),
+        status="completed",
+        trigger_type="manual",
+    )
+    eval_b = Evaluation(
+        agent_version_id=uuid.uuid4(),
+        status="completed",
+        trigger_type="manual",
+    )
+    db.add_all([eval_a, eval_b])
+    db.commit()
+    db.refresh(eval_a)
+    db.refresh(eval_b)
+
+    tc_a = TestCase(
+        evaluation_id=eval_a.id,
+        name="Case A",
+        category="functional",
+        input_data="In A",
+        expected_behavior="Out A",
+    )
+    tc_b = TestCase(
+        evaluation_id=eval_b.id,
+        name="Case B",
+        category="functional",
+        input_data="In B",
+        expected_behavior="Out B",
+    )
+    db.add_all([tc_a, tc_b])
+    db.commit()
+    db.refresh(tc_a)
+    db.refresh(tc_b)
+
+    tr_a = TestRun(test_case_id=tc_a.id, status="completed", latency_ms=50)
+    tr_b = TestRun(test_case_id=tc_b.id, status="completed", latency_ms=80)
+    db.add_all([tr_a, tr_b])
+    db.commit()
+    db.refresh(tr_a)
+    db.refresh(tr_b)
+
+    res_a = EvaluationResult(
+        test_run_id=tr_a.id,
+        metric_name="correctness",
+        score=1.0,
+        status="passed",
+        explanation="Eval A result",
+        configuration_version=1,
+        configuration={"model": "gpt-4"},
+    )
+    res_b = EvaluationResult(
+        test_run_id=tr_b.id,
+        metric_name="correctness",
+        score=0.8,
+        status="passed",
+        explanation="Eval B result",
+        configuration_version=4,
+        configuration={"model": "claude-3"},
+    )
+    db.add_all([res_a, res_b])
+    db.commit()
+
+    configs_a = get_evaluation_metric_configurations(eval_a, db)
+    configs_b = get_evaluation_metric_configurations(eval_b, db)
+
+    assert configs_a == {
+        "correctness": {
+            "version": 1,
+            "configuration": {"model": "gpt-4"},
+        }
+    }
+    assert configs_b == {
+        "correctness": {
+            "version": 4,
+            "configuration": {"model": "claude-3"},
+        }
+    }
+
 
 
 
