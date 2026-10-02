@@ -158,3 +158,44 @@ def test_evaluation_result_api_returns_configuration_metadata(client, authentica
         "case_sensitive": True,
     }
 
+
+def test_evaluation_result_api_serialization_contract(client, authenticated_context):
+    test_run_id = authenticated_context["own_test_run_id"]
+    headers = authenticated_context["headers"]
+    payload = {
+        "metric_name": "correctness",
+        "score": 1.0,
+        "status": "passed",
+        "explanation": "Testing configuration serialization contract",
+        "configuration_version": 2,
+        "configuration": {
+            "case_sensitive": True,
+        },
+    }
+
+    response = client.post(
+        f"/test-runs/{test_run_id}/results",
+        json=payload,
+        headers=headers,
+    )
+
+    assert response.status_code == 201
+    data = response.json()
+
+    assert "metric_name" in data
+    assert "score" in data
+    assert "status" in data
+    assert "explanation" in data
+    assert "configuration_version" in data
+    assert "configuration" in data
+
+    assert data["metric_name"] == "correctness"
+    assert data["score"] == 1.0
+    assert data["status"] == "passed"
+    assert data["explanation"] == "Testing configuration serialization contract"
+    assert data["configuration_version"] == 2
+    assert data["configuration"] == {
+        "case_sensitive": True,
+    }
+
+
