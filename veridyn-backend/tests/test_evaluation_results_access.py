@@ -117,3 +117,44 @@ def test_get_evaluation_results_missing_jwt(client, authenticated_context):
     response = client.get(f"/test-runs/{test_run_id}/results")
 
     assert response.status_code == 401
+
+
+def test_evaluation_result_api_returns_configuration_metadata(client, authenticated_context):
+    test_run_id = authenticated_context["own_test_run_id"]
+    headers = authenticated_context["headers"]
+    payload = {
+        "metric_name": "correctness",
+        "score": 1.0,
+        "status": "passed",
+        "explanation": "Testing configuration metadata in API response",
+        "configuration_version": 2,
+        "configuration": {
+            "case_sensitive": True,
+        },
+    }
+
+    response = client.post(
+        f"/test-runs/{test_run_id}/results",
+        json=payload,
+        headers=headers,
+    )
+
+    assert response.status_code == 201
+    assert response.json()["configuration_version"] == 2
+    assert response.json()["configuration"] == {
+        "case_sensitive": True,
+    }
+
+    # Also verify GET returns the configuration metadata
+    get_response = client.get(
+        f"/test-runs/{test_run_id}/results",
+        headers=headers,
+    )
+    assert get_response.status_code == 200
+    matching = next(
+        r for r in get_response.json() if r["configuration_version"] == 2
+    )
+    assert matching["configuration"] == {
+        "case_sensitive": True,
+    }
+

@@ -8,6 +8,8 @@ class EvaluationResultCreateRequest(BaseModel):
     score: float | None = None
     status: str = Field(min_length=1, max_length=50)
     explanation: str | None = None
+    configuration_version: int = 1
+    configuration: dict = Field(default_factory=dict)
 
 
 class EvaluationResultResponse(BaseModel):
@@ -17,6 +19,8 @@ class EvaluationResultResponse(BaseModel):
     score: float | None = None
     status: str
     explanation: str | None = None
+    configuration_version: int
+    configuration: dict
 
     model_config = {
         "from_attributes": True

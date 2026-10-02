@@ -86,6 +86,8 @@ def create_evaluation_result(
         score=data.score,
         status=data.status,
         explanation=data.explanation,
+        configuration_version=data.configuration_version,
+        configuration=data.configuration,
     )
 
     db.add(result)
