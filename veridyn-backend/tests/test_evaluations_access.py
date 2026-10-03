@@ -192,3 +192,115 @@ def test_get_evaluations_statistics_values(client, authenticated_user_context, d
     assert matching_evaluation["failed_runs"] == 1
     assert matching_evaluation["average_latency_ms"] == 200.0
 
+
+def test_evaluation_api_metric_configurations(client, authenticated_user_context, db_session):
+    from app.models.evaluation import Evaluation
+    from app.models.evaluation_result import EvaluationResult
+    from app.models.test_case import TestCase
+    from app.models.test_run import TestRun
+
+    agent_version_id = uuid.UUID(
+        authenticated_user_context["own_agent_version_id"]
+    )
+    headers = authenticated_user_context["headers"]
+
+    # 1. Evaluation with no results returns {}
+    create_response = client.post(
+        "/evaluations",
+        json={
+            "agent_version_id": str(agent_version_id),
+            "trigger_type": "manual",
+        },
+        headers=headers,
+    )
+    assert create_response.status_code == 201
+    assert create_response.json()["metric_configurations"] == {}
+
+    # 2. Evaluation with results returns persisted metric configurations
+    evaluation_id = uuid.UUID(create_response.json()["id"])
+    test_case = TestCase(
+        evaluation_id=evaluation_id,
+        name="Metric Config Test Case",
+        category="functional",
+        input_data="Hello",
+        expected_behavior="Expected",
+        is_adversarial=False,
+    )
+    db_session.add(test_case)
+    db_session.commit()
+    db_session.refresh(test_case)
+
+    test_run = TestRun(
+        test_case_id=test_case.id,
+        status="completed",
+        result="passed",
+        actual_output="Expected",
+        latency_ms=150,
+    )
+    db_session.add(test_run)
+    db_session.commit()
+    db_session.refresh(test_run)
+
+    result_correctness = EvaluationResult(
+        test_run_id=test_run.id,
+        metric_name="correctness",
+        score=1.0,
+        status="passed",
+        explanation="Accurate",
+        configuration_version=2,
+        configuration={
+            "case_sensitive": True,
+        },
+    )
+    result_latency = EvaluationResult(
+        test_run_id=test_run.id,
+        metric_name="latency",
+        score=0.9,
+        status="passed",
+        explanation="Fast",
+        configuration_version=3,
+        configuration={
+            "fast_threshold_ms": 300,
+            "acceptable_threshold_ms": 800,
+            "high_threshold_ms": 1500,
+        },
+    )
+    db_session.add_all([result_correctness, result_latency])
+    db_session.commit()
+
+    # Move evaluation status to running so complete endpoint succeeds
+    eval_record = db_session.query(Evaluation).filter(Evaluation.id == evaluation_id).first()
+    eval_record.status = "running"
+    db_session.commit()
+
+    complete_response = client.post(
+        f"/evaluations/{evaluation_id}/complete",
+        headers=headers,
+    )
+    assert complete_response.status_code == 200
+    assert complete_response.json()["metric_configurations"]["correctness"]["version"] == 2
+    assert complete_response.json()["metric_configurations"]["correctness"]["configuration"] == {
+        "case_sensitive": True,
+    }
+    assert complete_response.json()["metric_configurations"]["latency"]["version"] == 3
+    assert complete_response.json()["metric_configurations"]["latency"]["configuration"] == {
+        "fast_threshold_ms": 300,
+        "acceptable_threshold_ms": 800,
+        "high_threshold_ms": 1500,
+    }
+
+    # Also verify GET returns the metric configurations
+    get_response = client.get(
+        f"/evaluations/{agent_version_id}",
+        headers=headers,
+    )
+    assert get_response.status_code == 200
+    matching = next(
+        item for item in get_response.json() if item["id"] == str(evaluation_id)
+    )
+    assert matching["metric_configurations"]["correctness"]["version"] == 2
+    assert matching["metric_configurations"]["correctness"]["configuration"] == {
+        "case_sensitive": True,
+    }
+
+

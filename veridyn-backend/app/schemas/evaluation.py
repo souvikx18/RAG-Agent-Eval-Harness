@@ -24,6 +24,8 @@ class EvaluationResponse(BaseModel):
     failed_runs: int = 0
     average_latency_ms: float = 0.0
 
+    metric_configurations: dict = Field(default_factory=dict)
+
     model_config = {
         "from_attributes": True,
     }

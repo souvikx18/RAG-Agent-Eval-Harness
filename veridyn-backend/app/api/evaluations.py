@@ -19,6 +19,7 @@ from app.services.evaluation_service import (
 )
 from app.services.evaluation_statistics_service import (
     calculate_evaluation_statistics,
+    get_evaluation_metric_configurations,
 )
 
 
@@ -38,6 +39,11 @@ def build_evaluation_response(
         db,
     )
 
+    metric_configurations = get_evaluation_metric_configurations(
+        evaluation,
+        db,
+    )
+
     return {
         "id": evaluation.id,
         "agent_version_id": evaluation.agent_version_id,
@@ -45,8 +51,10 @@ def build_evaluation_response(
         "trigger_type": evaluation.trigger_type,
         "summary": evaluation.summary,
         "overall_score": evaluation.overall_score,
+        "metric_configurations": metric_configurations,
         **statistics,
     }
+
 
 
 @router.post(
