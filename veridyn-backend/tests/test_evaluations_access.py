@@ -304,3 +304,125 @@ def test_evaluation_api_metric_configurations(client, authenticated_user_context
     }
 
 
+def test_evaluation_api_metric_configuration_consistency_with_persisted_results(
+    client, authenticated_user_context, db_session
+):
+    from app.models.evaluation import Evaluation
+    from app.models.evaluation_result import EvaluationResult
+    from app.models.test_case import TestCase
+    from app.models.test_run import TestRun
+    from app.services.metrics.registry import metric_registry
+
+    # Reset registry to default state (version 1) to verify API does not rely on global registry state
+    metric_registry.reset()
+
+    agent_version_id = uuid.UUID(
+        authenticated_user_context["own_agent_version_id"]
+    )
+    headers = authenticated_user_context["headers"]
+
+    evaluation = Evaluation(
+        agent_version_id=agent_version_id,
+        status="running",
+        trigger_type="manual",
+    )
+    db_session.add(evaluation)
+    db_session.commit()
+    db_session.refresh(evaluation)
+
+    test_case = TestCase(
+        evaluation_id=evaluation.id,
+        name="Consistency Test Case",
+        category="functional",
+        input_data="Query",
+        expected_behavior="Target",
+        is_adversarial=False,
+    )
+    db_session.add(test_case)
+    db_session.commit()
+    db_session.refresh(test_case)
+
+    test_run = TestRun(
+        test_case_id=test_case.id,
+        status="completed",
+        result="passed",
+        actual_output="Target",
+        latency_ms=100,
+    )
+    db_session.add(test_run)
+    db_session.commit()
+    db_session.refresh(test_run)
+
+    result_correctness = EvaluationResult(
+        test_run_id=test_run.id,
+        metric_name="correctness",
+        score=1.0,
+        status="passed",
+        explanation="Exact match",
+        configuration_version=2,
+        configuration={
+            "case_sensitive": True,
+        },
+    )
+    result_latency = EvaluationResult(
+        test_run_id=test_run.id,
+        metric_name="latency",
+        score=1.0,
+        status="passed",
+        explanation="Fast latency",
+        configuration_version=3,
+        configuration={
+            "fast_threshold_ms": 300,
+            "acceptable_threshold_ms": 800,
+            "high_threshold_ms": 1500,
+        },
+    )
+    db_session.add_all([result_correctness, result_latency])
+    db_session.commit()
+
+    response = client.post(
+        f"/evaluations/{evaluation.id}/complete",
+        headers=headers,
+    )
+    assert response.status_code == 200
+
+    assert response.json()["metric_configurations"]["correctness"] == {
+        "version": 2,
+        "configuration": {
+            "case_sensitive": True,
+        },
+    }
+    assert response.json()["metric_configurations"]["latency"] == {
+        "version": 3,
+        "configuration": {
+            "fast_threshold_ms": 300,
+            "acceptable_threshold_ms": 800,
+            "high_threshold_ms": 1500,
+        },
+    }
+
+    get_response = client.get(
+        f"/evaluations/{agent_version_id}",
+        headers=headers,
+    )
+    assert get_response.status_code == 200
+    matching = next(
+        item for item in get_response.json() if item["id"] == str(evaluation.id)
+    )
+    assert matching["metric_configurations"]["correctness"] == {
+        "version": 2,
+        "configuration": {
+            "case_sensitive": True,
+        },
+    }
+    assert matching["metric_configurations"]["latency"] == {
+        "version": 3,
+        "configuration": {
+            "fast_threshold_ms": 300,
+            "acceptable_threshold_ms": 800,
+            "high_threshold_ms": 1500,
+        },
+    }
+
+
+
