@@ -706,6 +706,65 @@ def test_get_evaluation_metric_configurations_isolation(db):
     }
 
 
+def test_get_evaluation_metric_configurations_mutation_protection(db):
+    evaluation = Evaluation(
+        agent_version_id=uuid.uuid4(),
+        status="completed",
+        trigger_type="manual",
+    )
+    db.add(evaluation)
+    db.commit()
+    db.refresh(evaluation)
+
+    test_case = TestCase(
+        evaluation_id=evaluation.id,
+        name="Mutation Test Case",
+        category="functional",
+        input_data="input",
+        expected_behavior="output",
+    )
+    db.add(test_case)
+    db.commit()
+    db.refresh(test_case)
+
+    test_run = TestRun(
+        test_case_id=test_case.id,
+        status="completed",
+        result="passed",
+        latency_ms=100,
+    )
+    db.add(test_run)
+    db.commit()
+    db.refresh(test_run)
+
+    result = EvaluationResult(
+        test_run_id=test_run.id,
+        metric_name="correctness",
+        score=1.0,
+        status="passed",
+        explanation="Accurate",
+        configuration_version=2,
+        configuration={
+            "case_sensitive": True,
+        },
+    )
+    db.add(result)
+    db.commit()
+    db.refresh(result)
+
+    snapshot = get_evaluation_metric_configurations(
+        evaluation,
+        db,
+    )
+
+    snapshot["correctness"]["configuration"]["case_sensitive"] = False
+
+    assert result.configuration == {
+        "case_sensitive": True,
+    }
+
+
+
 
 
 

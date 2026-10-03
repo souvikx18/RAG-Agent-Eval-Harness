@@ -1,9 +1,12 @@
+from copy import deepcopy
+
 from sqlalchemy.orm import Session
 
 from app.models.evaluation import Evaluation
 from app.models.evaluation_result import EvaluationResult
 from app.models.test_case import TestCase
 from app.models.test_run import TestRun
+
 
 
 
@@ -95,8 +98,9 @@ def get_evaluation_metric_configurations(
     for result in evaluation_results:
         metric_configurations[result.metric_name] = {
             "version": result.configuration_version,
-            "configuration": result.configuration,
+            "configuration": deepcopy(result.configuration),
         }
 
     return metric_configurations
+
 
