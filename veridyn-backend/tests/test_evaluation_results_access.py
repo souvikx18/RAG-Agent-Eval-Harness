@@ -199,3 +199,56 @@ def test_evaluation_result_api_serialization_contract(client, authenticated_cont
     }
 
 
+def test_evaluation_result_api_configuration_version_contract(client, authenticated_context):
+    from app.services.metrics.registry import metric_registry
+
+    test_run_id = authenticated_context["own_test_run_id"]
+    headers = authenticated_context["headers"]
+
+    payload = {
+        "metric_name": "correctness",
+        "score": 1.0,
+        "status": "passed",
+        "explanation": "Version contract verification",
+        "configuration_version": 2,
+        "configuration": {
+            "case_sensitive": True,
+        },
+    }
+
+    response = client.post(
+        f"/test-runs/{test_run_id}/results",
+        json=payload,
+        headers=headers,
+    )
+
+    assert response.status_code == 201
+    assert response.json()["configuration_version"] >= 1
+    assert response.json()["configuration_version"] == 2
+    assert response.json()["configuration"] == {
+        "case_sensitive": True,
+    }
+
+    # Verify that changing current metric registry configuration cannot alter historical persisted version
+    metric_registry.configure("correctness", {"case_sensitive": False})
+
+    try:
+        get_response = client.get(
+            f"/test-runs/{test_run_id}/results",
+            headers=headers,
+        )
+        assert get_response.status_code == 200
+        matching = next(
+            r for r in get_response.json()
+            if r["explanation"] == "Version contract verification"
+        )
+        assert matching["configuration_version"] >= 1
+        assert matching["configuration_version"] == 2
+        assert matching["configuration"] == {
+            "case_sensitive": True,
+        }
+    finally:
+        metric_registry.reset()
+
+
+
