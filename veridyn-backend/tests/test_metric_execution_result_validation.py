@@ -86,3 +86,29 @@ def test_metric_execution_result_rejects_non_dictionary_configuration():
             configuration_version=1,
             configuration="invalid",
         )
+
+
+def test_metric_execution_result_configuration_version_validation():
+    metric_result = create_metric_result()
+
+    with pytest.raises(ValueError):
+        MetricExecutionResult(
+            metric_result=metric_result,
+            configuration_version=0,
+            configuration={},
+        )
+
+    with pytest.raises(ValueError):
+        MetricExecutionResult(
+            metric_result=metric_result,
+            configuration_version=-1,
+            configuration={},
+        )
+
+    result = MetricExecutionResult(
+        metric_result=metric_result,
+        configuration_version=1,
+        configuration={},
+    )
+    assert result.configuration_version == 1
+
