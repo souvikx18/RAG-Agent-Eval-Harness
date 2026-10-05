@@ -79,10 +79,14 @@ def get_evaluation_metric_configurations(
     db: Session,
 ) -> dict:
     """
-    Retrieve the metric configurations used during an evaluation.
+    Return the metric configuration snapshot persisted with this evaluation's results.
 
-    Groups persisted EvaluationResult records by metric_name and
-    returns their configuration version and configuration snapshot.
+    The snapshot is derived from EvaluationResult records rather than the current
+    MetricRegistry configuration, preserving the configuration and version that
+    produced the stored evaluation results.
+
+    Returned configuration dictionaries are deep copies so callers cannot mutate
+    persisted result data through the returned snapshot.
     """
     evaluation_results = (
         db.query(EvaluationResult)
