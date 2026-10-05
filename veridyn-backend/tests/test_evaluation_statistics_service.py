@@ -764,6 +764,83 @@ def test_get_evaluation_metric_configurations_mutation_protection(db):
     }
 
 
+def test_metric_configuration_snapshot_immutability(db):
+    evaluation = Evaluation(
+        agent_version_id=uuid.uuid4(),
+        status="completed",
+        trigger_type="manual",
+    )
+    db.add(evaluation)
+    db.commit()
+    db.refresh(evaluation)
+
+    test_case = TestCase(
+        evaluation_id=evaluation.id,
+        name="Snapshot Immutability Test Case",
+        category="functional",
+        input_data="input data",
+        expected_behavior="expected output",
+    )
+    db.add(test_case)
+    db.commit()
+    db.refresh(test_case)
+
+    test_run = TestRun(
+        test_case_id=test_case.id,
+        status="completed",
+        result="passed",
+        latency_ms=100,
+    )
+    db.add(test_run)
+    db.commit()
+    db.refresh(test_run)
+
+    result = EvaluationResult(
+        test_run_id=test_run.id,
+        metric_name="correctness",
+        score=1.0,
+        status="passed",
+        explanation="Accurate response",
+        configuration_version=2,
+        configuration={
+            "case_sensitive": True,
+        },
+    )
+    db.add(result)
+    db.commit()
+    db.refresh(result)
+
+    # 1. Obtain snapshot from evaluation service
+    snapshot = get_evaluation_metric_configurations(
+        evaluation,
+        db,
+    )
+
+    # 2. Mutate the returned snapshot
+    snapshot["correctness"]["configuration"]["case_sensitive"] = False
+
+    # 3. Fetch the EvaluationResult again from the database
+    db.refresh(result)
+    persisted_result = (
+        db.query(EvaluationResult)
+        .filter(EvaluationResult.id == result.id)
+        .first()
+    )
+
+    # 4. Verify persisted configuration and version remain unchanged
+    assert persisted_result.configuration == {
+        "case_sensitive": True,
+    }
+    assert persisted_result.configuration_version == 2
+
+    # 5. Verify the snapshot itself actually changed
+    assert snapshot["correctness"]["configuration"] == {
+        "case_sensitive": False,
+    }
+    assert snapshot["correctness"]["version"] == 2
+
+
+
 
 
 
