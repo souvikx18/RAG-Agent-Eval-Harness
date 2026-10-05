@@ -425,4 +425,104 @@ def test_evaluation_api_metric_configuration_consistency_with_persisted_results(
     }
 
 
+def test_evaluation_snapshot_independent_of_current_registry(
+    client, authenticated_user_context, db_session
+):
+    from app.models.evaluation import Evaluation
+    from app.models.evaluation_result import EvaluationResult
+    from app.models.test_case import TestCase
+    from app.models.test_run import TestRun
+    from app.services.metrics.registry import metric_registry
+
+    agent_version_id = uuid.UUID(
+        authenticated_user_context["own_agent_version_id"]
+    )
+    headers = authenticated_user_context["headers"]
+
+    # 1. Create and persist an evaluation with version 2 and case_sensitive=True
+    evaluation = Evaluation(
+        agent_version_id=agent_version_id,
+        status="running",
+        trigger_type="manual",
+    )
+    db_session.add(evaluation)
+    db_session.commit()
+    db_session.refresh(evaluation)
+
+    test_case = TestCase(
+        evaluation_id=evaluation.id,
+        name="Registry Independence Test Case",
+        category="functional",
+        input_data="Query",
+        expected_behavior="Expected",
+        is_adversarial=False,
+    )
+    db_session.add(test_case)
+    db_session.commit()
+    db_session.refresh(test_case)
+
+    test_run = TestRun(
+        test_case_id=test_case.id,
+        status="completed",
+        result="passed",
+        actual_output="Expected",
+        latency_ms=120,
+    )
+    db_session.add(test_run)
+    db_session.commit()
+    db_session.refresh(test_run)
+
+    persisted_result = EvaluationResult(
+        test_run_id=test_run.id,
+        metric_name="correctness",
+        score=1.0,
+        status="passed",
+        explanation="Accurate match",
+        configuration_version=2,
+        configuration={
+            "case_sensitive": True,
+        },
+    )
+    db_session.add(persisted_result)
+    db_session.commit()
+
+    # 2. Change the current global registry configuration to something different
+    metric_registry.configure("correctness", {"case_sensitive": False})
+
+    try:
+        # 3. Build the evaluation response (via complete endpoint)
+        response = client.post(
+            f"/evaluations/{evaluation.id}/complete",
+            headers=headers,
+        )
+        assert response.status_code == 200
+
+        # 4. Verify the response still returns the persisted configuration, NOT the new registry configuration
+        assert response.json()["metric_configurations"]["correctness"] == {
+            "version": 2,
+            "configuration": {
+                "case_sensitive": True,
+            },
+        }
+
+        # Also verify GET endpoint returns the persisted configuration
+        get_response = client.get(
+            f"/evaluations/{agent_version_id}",
+            headers=headers,
+        )
+        assert get_response.status_code == 200
+        matching = next(
+            item for item in get_response.json() if item["id"] == str(evaluation.id)
+        )
+        assert matching["metric_configurations"]["correctness"] == {
+            "version": 2,
+            "configuration": {
+                "case_sensitive": True,
+            },
+        }
+    finally:
+        metric_registry.reset()
+
+
+
 
