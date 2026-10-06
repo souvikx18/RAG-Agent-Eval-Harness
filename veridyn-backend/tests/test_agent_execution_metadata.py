@@ -208,3 +208,67 @@ def test_execute_test_run_failed_execution_retains_metadata(db, execution_hierar
     assert reloaded.started_at == executed_run.started_at
     assert reloaded.completed_at == executed_run.completed_at
     assert reloaded.status == "failed"
+
+
+def test_execution_duration_consistency_successful_run(db, execution_hierarchy):
+    tc = execution_hierarchy["tc_placeholder"]
+
+    test_run = TestRun(
+        id=uuid.uuid4(),
+        test_case_id=tc.id,
+        status="pending",
+    )
+    db.add(test_run)
+    db.commit()
+
+    executed_run = execute_test_run(test_run, db)
+
+    assert executed_run.status == "completed"
+    assert executed_run.started_at is not None
+    assert executed_run.completed_at is not None
+    assert executed_run.latency_ms is not None
+    assert executed_run.latency_ms >= 0
+    assert executed_run.completed_at >= executed_run.started_at
+
+
+def test_execution_duration_consistency_failed_run(db, execution_hierarchy):
+    tc = execution_hierarchy["tc_http"]
+
+    test_run = TestRun(
+        id=uuid.uuid4(),
+        test_case_id=tc.id,
+        status="pending",
+    )
+    db.add(test_run)
+    db.commit()
+
+    with patch("httpx.post", side_effect=Exception("Network failure")):
+        executed_run = execute_test_run(test_run, db)
+
+    assert executed_run.status == "failed"
+    assert executed_run.started_at is not None
+    assert executed_run.completed_at is not None
+    assert executed_run.latency_ms is not None
+    assert executed_run.latency_ms >= 0
+    assert executed_run.completed_at >= executed_run.started_at
+
+
+def test_execution_duration_consistency_failed_before_dispatch(db):
+    """Failure prior to executor dispatch also guarantees consistent timing metadata."""
+    test_run = TestRun(
+        id=uuid.uuid4(),
+        test_case_id=uuid.uuid4(),
+        status="pending",
+    )
+    db.add(test_run)
+    db.commit()
+
+    executed_run = execute_test_run(test_run, db)
+
+    assert executed_run.status == "failed"
+    assert executed_run.started_at is not None
+    assert executed_run.completed_at is not None
+    assert executed_run.latency_ms is not None
+    assert executed_run.latency_ms >= 0
+    assert executed_run.completed_at >= executed_run.started_at
+

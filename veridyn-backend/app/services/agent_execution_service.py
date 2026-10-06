@@ -72,8 +72,18 @@ def execute_test_run(
         test_run.started_at = datetime.now(timezone.utc)
         response = executor.execute(request)
 
-        test_run.latency_ms = response.latency_ms
         test_run.completed_at = datetime.now(timezone.utc)
+        if test_run.completed_at < test_run.started_at:
+            test_run.completed_at = test_run.started_at
+
+        elapsed_ms = int(
+            (test_run.completed_at - test_run.started_at).total_seconds() * 1000
+        )
+        test_run.latency_ms = (
+            response.latency_ms
+            if response.latency_ms is not None and response.latency_ms >= 0
+            else max(0, elapsed_ms)
+        )
 
         if response.error:
             test_run.status = "failed"
@@ -90,8 +100,16 @@ def execute_test_run(
         test_run.status = "failed"
         test_run.error_message = str(exc)
         test_run.completed_at = datetime.now(timezone.utc)
-        test_run.latency_ms = int(
-            (time.perf_counter() - start_time) * 1000
+        if test_run.started_at is None:
+            test_run.started_at = test_run.completed_at
+        elif test_run.completed_at < test_run.started_at:
+            test_run.completed_at = test_run.started_at
+
+        test_run.latency_ms = max(
+            0,
+            int(
+                (test_run.completed_at - test_run.started_at).total_seconds() * 1000
+            ),
         )
 
     db.commit()
