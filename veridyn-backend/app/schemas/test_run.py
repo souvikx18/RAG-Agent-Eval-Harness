@@ -1,3 +1,4 @@
+from datetime import datetime
 import uuid
 
 from pydantic import BaseModel
@@ -11,6 +12,8 @@ class TestRunResponse(BaseModel):
     result: str | None = None
     error_message: str | None = None
     latency_ms: int | None = None
+    started_at: datetime | None = None
+    executor_type: str | None = None
 
     model_config = {
         "from_attributes": True

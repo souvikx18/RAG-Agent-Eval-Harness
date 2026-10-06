@@ -86,6 +86,8 @@ def test_http_agent_e2e_integration(client, auth_headers, db_session):
         assert run_data["result"] == "passed"
         assert "Hello! I received your message:" in run_data["actual_output"]
         assert run_data["error_message"] is None
+        assert run_resp.json()["started_at"] is not None
+        assert run_resp.json()["executor_type"] == "HTTPAgentExecutor"
 
     # Verify Evaluation Results
     results_resp = client.get(f"/test-runs/{run_data['id']}/results", headers=auth_headers)

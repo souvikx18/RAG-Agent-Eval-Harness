@@ -75,6 +75,8 @@ def test_http_agent_failure_handling(client, auth_headers, db_session):
     assert run_data["result"] == "failed"
     assert run_data["actual_output"] is None
     assert run_data["error_message"] is not None
+    assert run_resp.json()["started_at"] is not None
+    assert run_resp.json()["executor_type"] == "HTTPAgentExecutor"
 
     # Verify Evaluation Results reflect the failure
     results_resp = client.get(f"/test-runs/{run_data['id']}/results", headers=auth_headers)
