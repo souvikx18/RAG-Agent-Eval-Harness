@@ -9,6 +9,11 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 from app.core.database import Base
 
 
+class ConfigurationValidationError(ValueError, TypeError):
+    """Raised when configuration fails type or value validation."""
+    pass
+
+
 class EvaluationResult(Base):
     __tablename__ = "evaluation_results"
 
@@ -74,4 +79,12 @@ class EvaluationResult(Base):
             raise ValueError("Configuration version cannot be None.")
         if value < 1:
             raise ValueError("Configuration version must be at least 1.")
+        return value
+
+    @validates("configuration")
+    def validate_configuration(self, key: str, value: Any) -> dict[str, Any]:
+        if value is None:
+            raise ConfigurationValidationError("Configuration cannot be None.")
+        if not isinstance(value, dict):
+            raise ConfigurationValidationError("Configuration must be a dictionary.")
         return value

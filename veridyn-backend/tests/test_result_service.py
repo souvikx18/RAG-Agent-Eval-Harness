@@ -343,4 +343,112 @@ def test_evaluation_result_nested_json_configuration_persistence(db):
     assert persisted_result.configuration["options"]["normalize_case"] is False
 
 
+def test_evaluation_result_configuration_type_safety(db):
+    test_case = TestCase(
+        id=uuid.uuid4(),
+        evaluation_id=uuid.uuid4(),
+        name="Configuration Type Safety Test",
+        category="functional",
+        input_data="Sample input",
+        expected_behavior="Sample output",
+        is_adversarial=False,
+    )
+    db.add(test_case)
+    db.commit()
+
+    test_run = TestRun(
+        id=uuid.uuid4(),
+        test_case_id=test_case.id,
+        status="completed",
+        result="passed",
+    )
+    db.add(test_run)
+    db.commit()
+
+    # 1. Empty dict accepted
+    empty_result = EvaluationResult(
+        test_run_id=test_run.id,
+        metric_name="correctness",
+        score=1.0,
+        status="passed",
+        configuration_version=1,
+        configuration={},
+    )
+    db.add(empty_result)
+    db.commit()
+
+    persisted_empty = (
+        db.query(EvaluationResult)
+        .filter(EvaluationResult.id == empty_result.id)
+        .first()
+    )
+    assert persisted_empty is not None
+    assert persisted_empty.configuration == {}
+
+    # 2. Normal configuration dict accepted
+    normal_result = EvaluationResult(
+        test_run_id=test_run.id,
+        metric_name="correctness",
+        score=1.0,
+        status="passed",
+        configuration_version=1,
+        configuration={
+            "case_sensitive": True,
+        },
+    )
+    db.add(normal_result)
+    db.commit()
+
+    persisted_normal = (
+        db.query(EvaluationResult)
+        .filter(EvaluationResult.id == normal_result.id)
+        .first()
+    )
+    assert persisted_normal is not None
+    assert persisted_normal.configuration == {
+        "case_sensitive": True,
+    }
+
+    # 3. None rejected
+    with pytest.raises((ValueError, TypeError)):
+        EvaluationResult(
+            test_run_id=test_run.id,
+            metric_name="correctness",
+            score=1.0,
+            status="passed",
+            configuration_version=1,
+            configuration=None,
+        )
+
+    # 4. Non-dictionary value rejected (e.g. string "invalid")
+    with pytest.raises((ValueError, TypeError)):
+        EvaluationResult(
+            test_run_id=test_run.id,
+            metric_name="correctness",
+            score=1.0,
+            status="passed",
+            configuration_version=1,
+            configuration="invalid",
+        )
+
+    # Also verify non-dict types like lists are rejected
+    with pytest.raises((ValueError, TypeError)):
+        EvaluationResult(
+            test_run_id=test_run.id,
+            metric_name="correctness",
+            score=1.0,
+            status="passed",
+            configuration_version=1,
+            configuration=[1, 2, 3],
+        )
+
+    # Also verify mutating existing persisted instance to invalid configuration is rejected
+    with pytest.raises((ValueError, TypeError)):
+        persisted_normal.configuration = None
+
+    with pytest.raises((ValueError, TypeError)):
+        persisted_normal.configuration = "invalid"
+
+
+
 
