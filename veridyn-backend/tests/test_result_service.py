@@ -282,3 +282,65 @@ def test_evaluation_result_configuration_version_model_validation(db):
         retrieved.configuration_version = -1
 
 
+def test_evaluation_result_nested_json_configuration_persistence(db):
+    test_case = TestCase(
+        id=uuid.uuid4(),
+        evaluation_id=uuid.uuid4(),
+        name="JSON Configuration Persistence Test",
+        category="functional",
+        input_data="Nested JSON input",
+        expected_behavior="Nested JSON output",
+        is_adversarial=False,
+    )
+    db.add(test_case)
+    db.commit()
+
+    test_run = TestRun(
+        id=uuid.uuid4(),
+        test_case_id=test_case.id,
+        status="completed",
+        result="passed",
+    )
+    db.add(test_run)
+    db.commit()
+
+    nested_config = {
+        "case_sensitive": True,
+        "options": {
+            "trim_whitespace": True,
+            "normalize_case": False,
+        },
+    }
+
+    result = EvaluationResult(
+        test_run_id=test_run.id,
+        metric_name="correctness",
+        score=1.0,
+        status="passed",
+        configuration_version=2,
+        configuration=nested_config,
+    )
+    db.add(result)
+    db.commit()
+
+    persisted_result = (
+        db.query(EvaluationResult)
+        .filter(EvaluationResult.id == result.id)
+        .first()
+    )
+
+    assert persisted_result is not None
+    assert persisted_result.configuration == {
+        "case_sensitive": True,
+        "options": {
+            "trim_whitespace": True,
+            "normalize_case": False,
+        },
+    }
+    assert isinstance(persisted_result.configuration["options"]["trim_whitespace"], bool)
+    assert persisted_result.configuration["options"]["trim_whitespace"] is True
+    assert isinstance(persisted_result.configuration["options"]["normalize_case"], bool)
+    assert persisted_result.configuration["options"]["normalize_case"] is False
+
+
+
