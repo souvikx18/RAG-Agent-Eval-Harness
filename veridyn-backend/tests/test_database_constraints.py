@@ -1,3 +1,4 @@
+from sqlalchemy import Integer, JSON
 from app.models.evaluation_result import EvaluationResult
 from app.models.test_case import TestCase
 from app.models.test_run import TestRun
@@ -29,4 +30,23 @@ def test_evaluation_result_required_columns_are_not_nullable():
     assert table.c.configuration_version.nullable is False
     assert table.c.configuration.nullable is False
     assert table.c.created_at.nullable is False
+
+
+def test_evaluation_result_configuration_metadata():
+    table = EvaluationResult.__table__
+
+    # configuration_version metadata
+    assert "configuration_version" in table.c
+    version_col = table.c.configuration_version
+    assert isinstance(version_col.type, Integer)
+    assert version_col.nullable is False
+    assert version_col.default is not None
+    assert version_col.default.arg == 1
+
+    # configuration metadata
+    assert "configuration" in table.c
+    config_col = table.c.configuration
+    assert isinstance(config_col.type, JSON)
+    assert config_col.nullable is False
+
 
