@@ -67,7 +67,9 @@ def execute_test_run(
         executor = get_agent_executor(
             endpoint=agent_version.endpoint,
         )
+        test_run.executor_type = executor.__class__.__name__
 
+        test_run.started_at = datetime.now(timezone.utc)
         response = executor.execute(request)
 
         test_run.latency_ms = response.latency_ms
