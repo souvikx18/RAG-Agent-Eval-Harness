@@ -3,6 +3,7 @@ import pytest
 from app.models.evaluation_result import EvaluationResult
 from app.models.test_case import TestCase
 from app.models.test_run import TestRun
+from app.services.metric_execution_service import execute_metrics
 from app.services.result_service import create_evaluation_result
 from app.services.metrics.registry import metric_registry
 
@@ -448,6 +449,102 @@ def test_evaluation_result_configuration_type_safety(db):
 
     with pytest.raises((ValueError, TypeError)):
         persisted_normal.configuration = "invalid"
+
+
+def test_metric_configuration_audit(db):
+    """
+    Audit invariant:
+    The configuration persisted in EvaluationResult must exactly match the
+    configuration captured by MetricExecutionResult across the complete path:
+    Metric -> MetricExecutionResult -> result_service -> EvaluationResult.
+    """
+    metric_registry.reset()
+
+    try:
+        # Configure metric: version increments to 2
+        metric_registry.configure(
+            "correctness",
+            {"case_sensitive": True},
+        )
+
+        test_case = TestCase(
+            id=uuid.uuid4(),
+            evaluation_id=uuid.uuid4(),
+            name="Audit Invariant Test Case",
+            category="functional",
+            input_data="Sample input",
+            expected_behavior="Sample output",
+            is_adversarial=False,
+        )
+        db.add(test_case)
+        db.commit()
+
+        test_run = TestRun(
+            id=uuid.uuid4(),
+            test_case_id=test_case.id,
+            status="completed",
+            actual_output="Sample output",
+            latency_ms=120,
+            result="passed",
+        )
+        db.add(test_run)
+        db.commit()
+
+        # Step 1: Capture execution results directly from execute_metrics
+        execution_results = execute_metrics(test_case, test_run)
+        correctness_execution = next(
+            r for r in execution_results if r.metric_result.metric_name == "correctness"
+        )
+
+        # Verify the metric execution result captured version 2 and configuration
+        assert correctness_execution.configuration_version == 2
+        assert correctness_execution.configuration == {
+            "case_sensitive": True,
+        }
+
+        # Step 2: Persist evaluation results through result_service
+        persisted_results = create_evaluation_result(test_run, db)
+        persisted_correctness = next(
+            r for r in persisted_results if r.metric_name == "correctness"
+        )
+
+        # Step 3: Reload persisted result from database
+        persisted_record = (
+            db.query(EvaluationResult)
+            .filter(EvaluationResult.id == persisted_correctness.id)
+            .first()
+        )
+        assert persisted_record is not None
+
+        # Step 4: Verify persisted result exactly matches MetricExecutionResult
+        assert (
+            persisted_record.configuration_version
+            == correctness_execution.configuration_version
+        )
+        assert (
+            persisted_record.configuration
+            == correctness_execution.configuration
+        )
+        assert persisted_record.configuration_version == 2
+        assert persisted_record.configuration == {
+            "case_sensitive": True,
+        }
+
+        # Step 5: Verify decoupling from future registry changes
+        # Reconfiguring or mutating registry must not alter persisted result
+        metric_registry.configure(
+            "correctness",
+            {"case_sensitive": False},
+        )
+        db.refresh(persisted_record)
+        assert persisted_record.configuration_version == 2
+        assert persisted_record.configuration == {
+            "case_sensitive": True,
+        }
+
+    finally:
+        metric_registry.reset()
+
 
 
 
