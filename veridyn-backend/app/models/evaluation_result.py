@@ -4,7 +4,7 @@ from typing import Any
 
 from sqlalchemy import DateTime, Float, ForeignKey, Integer, JSON, String, Text
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 
 from app.core.database import Base
 
@@ -67,3 +67,11 @@ class EvaluationResult(Base):
         "TestRun",
         backref="evaluation_results",
     )
+
+    @validates("configuration_version")
+    def validate_configuration_version(self, key: str, value: int) -> int:
+        if value is None:
+            raise ValueError("Configuration version cannot be None.")
+        if value < 1:
+            raise ValueError("Configuration version must be at least 1.")
+        return value

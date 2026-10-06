@@ -1,4 +1,5 @@
 import uuid
+import pytest
 from app.models.evaluation_result import EvaluationResult
 from app.models.test_case import TestCase
 from app.models.test_run import TestRun
@@ -203,4 +204,81 @@ def test_metric_configuration_persistence_verification(db):
 
     finally:
         metric_registry.reset()
+
+
+def test_evaluation_result_configuration_version_model_validation(db):
+    table = EvaluationResult.__table__
+
+    assert table.c.configuration_version.nullable is False
+    assert table.c.configuration_version.default.arg == 1
+
+    test_case = TestCase(
+        id=uuid.uuid4(),
+        evaluation_id=uuid.uuid4(),
+        name="Validation Model Case",
+        category="functional",
+        input_data="Sample",
+        expected_behavior="Sample",
+        is_adversarial=False,
+    )
+    db.add(test_case)
+    db.commit()
+
+    test_run = TestRun(
+        id=uuid.uuid4(),
+        test_case_id=test_case.id,
+        status="completed",
+        result="passed",
+    )
+    db.add(test_run)
+    db.commit()
+
+    # Verify invalid versions (0 and negative) are rejected at model boundary
+    with pytest.raises(ValueError, match="Configuration version must be at least 1"):
+        EvaluationResult(
+            test_run_id=test_run.id,
+            metric_name="correctness",
+            score=1.0,
+            status="passed",
+            configuration_version=0,
+            configuration={},
+        )
+
+    with pytest.raises(ValueError, match="Configuration version must be at least 1"):
+        EvaluationResult(
+            test_run_id=test_run.id,
+            metric_name="correctness",
+            score=1.0,
+            status="passed",
+            configuration_version=-1,
+            configuration={},
+        )
+
+    # Verify valid version (1) persists and retrieves successfully
+    valid_result = EvaluationResult(
+        test_run_id=test_run.id,
+        metric_name="correctness",
+        score=1.0,
+        status="passed",
+        configuration_version=1,
+        configuration={},
+    )
+    db.add(valid_result)
+    db.commit()
+
+    retrieved = (
+        db.query(EvaluationResult)
+        .filter(EvaluationResult.id == valid_result.id)
+        .first()
+    )
+    assert retrieved is not None
+    assert retrieved.configuration_version == 1
+
+    # Verify mutating existing instance to invalid version is rejected
+    with pytest.raises(ValueError, match="Configuration version must be at least 1"):
+        retrieved.configuration_version = 0
+
+    with pytest.raises(ValueError, match="Configuration version must be at least 1"):
+        retrieved.configuration_version = -1
+
 
