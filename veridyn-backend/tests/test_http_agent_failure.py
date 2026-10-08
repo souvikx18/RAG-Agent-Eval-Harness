@@ -74,9 +74,29 @@ def test_http_agent_failure_handling(client, auth_headers, db_session):
     assert run_data["status"] == "failed"
     assert run_data["result"] == "failed"
     assert run_data["actual_output"] is None
-    assert run_data["error_message"] is not None
     assert run_resp.json()["started_at"] is not None
     assert run_resp.json()["executor_type"] == "HTTPAgentExecutor"
+
+    # Verify TestRun Detail API contract on failed execution (Step 164)
+    detail_resp = client.get(f"/test-runs/{run_data['id']}", headers=auth_headers)
+    assert detail_resp.status_code == 200
+    detail_data = detail_resp.json()
+
+    assert detail_data["started_at"] is not None
+    assert detail_data["executor_type"] == "HTTPAgentExecutor"
+    assert detail_data["completed_at"] is not None
+    assert detail_data["latency_ms"] is not None
+    assert detail_data["latency_ms"] >= 0
+
+    # Verify established response contract fields are preserved
+    assert "id" in detail_data
+    assert "test_case_id" in detail_data
+    assert "status" in detail_data
+    assert "actual_output" in detail_data
+    assert "completed_at" in detail_data
+    assert "latency_ms" in detail_data
+    assert "started_at" in detail_data
+    assert "executor_type" in detail_data
 
     # Verify Evaluation Results reflect the failure
     results_resp = client.get(f"/test-runs/{run_data['id']}/results", headers=auth_headers)

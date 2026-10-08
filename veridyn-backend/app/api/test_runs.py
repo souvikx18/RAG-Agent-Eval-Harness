@@ -107,3 +107,64 @@ def list_test_runs(
         .order_by(TestRun.created_at.desc())
         .all()
     )
+
+
+detail_router = APIRouter(
+    prefix="/test-runs",
+    tags=["Test Runs"],
+)
+
+
+def get_owned_test_run(
+    test_run_id: uuid.UUID,
+    current_user: User,
+    db: Session,
+) -> TestRun:
+    test_run = (
+        db.query(TestRun)
+        .join(
+            TestCase,
+            TestRun.test_case_id == TestCase.id,
+        )
+        .join(
+            Evaluation,
+            TestCase.evaluation_id == Evaluation.id,
+        )
+        .join(
+            AgentVersion,
+            Evaluation.agent_version_id == AgentVersion.id,
+        )
+        .join(
+            Agent,
+            AgentVersion.agent_id == Agent.id,
+        )
+        .filter(
+            TestRun.id == test_run_id,
+            Agent.owner_id == current_user.id,
+        )
+        .first()
+    )
+
+    if not test_run:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Test run not found",
+        )
+
+    return test_run
+
+
+@detail_router.get(
+    "/{test_run_id}",
+    response_model=TestRunResponse,
+)
+def get_test_run(
+    test_run_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return get_owned_test_run(
+        test_run_id,
+        current_user,
+        db,
+    )

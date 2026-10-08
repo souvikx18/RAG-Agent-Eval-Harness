@@ -105,3 +105,81 @@ def test_get_test_runs_missing_jwt(client, authenticated_context):
     response = client.get(f"/test-cases/{test_case_id}/runs")
 
     assert response.status_code == 401
+
+
+def test_get_test_run_detail_own_test_run(client, authenticated_context, db_session):
+    """
+    TestRun Detail API Contract Test (Step 164):
+    Call GET /test-runs/{YOUR_TEST_RUN_ID}
+    Expected: 200 OK with execution metadata
+    """
+    test_case_id = authenticated_context["own_test_case_id"]
+    headers = authenticated_context["headers"]
+
+    # First fetch list to find or create a test run
+    runs_resp = client.get(f"/test-cases/{test_case_id}/runs", headers=headers)
+    assert runs_resp.status_code == 200
+    runs = runs_resp.json()
+
+    if not runs:
+        # Create a run if none exists
+        create_resp = client.post(f"/test-cases/{test_case_id}/runs", headers=headers)
+        assert create_resp.status_code == 201
+        run_id = create_resp.json()["id"]
+    else:
+        run_id = runs[0]["id"]
+
+    response = client.get(f"/test-runs/{run_id}", headers=headers)
+    assert response.status_code == 200
+    data = response.json()
+
+    # Core contract fields
+    assert "id" in data
+    assert "test_case_id" in data
+    assert "status" in data
+    assert "actual_output" in data
+    assert "latency_ms" in data
+    assert "started_at" in data
+    assert "completed_at" in data
+    assert "executor_type" in data
+
+    # Execution metadata contract
+    assert data["started_at"] is not None
+    assert data["completed_at"] is not None
+    assert data["executor_type"] is not None
+    assert data["latency_ms"] is not None
+    assert data["latency_ms"] >= 0
+
+
+def test_get_test_run_detail_unknown(client, authenticated_context):
+    unknown_id = "00000000-0000-0000-0000-000000000001"
+    headers = authenticated_context["headers"]
+    response = client.get(f"/test-runs/{unknown_id}", headers=headers)
+    assert response.status_code == 404
+    assert response.json().get("detail") == "Test run not found"
+
+
+def test_get_test_run_detail_missing_jwt(client, authenticated_context, db_session):
+    test_case_id = authenticated_context["own_test_case_id"]
+    headers = authenticated_context["headers"]
+    runs_resp = client.get(f"/test-cases/{test_case_id}/runs", headers=headers)
+    assert runs_resp.status_code == 200
+    runs = runs_resp.json()
+    if runs:
+        run_id = runs[0]["id"]
+        response = client.get(f"/test-runs/{run_id}")
+        assert response.status_code == 401
+
+
+def test_list_test_runs_includes_execution_metadata(client, authenticated_context):
+    test_case_id = authenticated_context["own_test_case_id"]
+    headers = authenticated_context["headers"]
+
+    response = client.get(f"/test-cases/{test_case_id}/runs", headers=headers)
+    assert response.status_code == 200
+    runs = response.json()
+    for run in runs:
+        assert "started_at" in run
+        assert "completed_at" in run
+        assert "executor_type" in run
+        assert "latency_ms" in run

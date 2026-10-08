@@ -9,7 +9,10 @@ from app.api.agents import router as agents_router
 from app.api.agent_versions import router as agent_versions_router
 from app.api.evaluations import router as evaluations_router
 from app.api.test_cases import router as test_cases_router
-from app.api.test_runs import router as test_runs_router
+from app.api.test_runs import (
+    router as test_runs_router,
+    detail_router as test_run_detail_router,
+)
 from app.api.execution_traces import router as execution_traces_router
 from app.api.evaluation_results import router as evaluation_results_router
 from app.api.deployment_gates import router as deployment_gates_router
@@ -26,6 +29,7 @@ app.include_router(agent_versions_router)
 app.include_router(evaluations_router)
 app.include_router(test_cases_router)
 app.include_router(test_runs_router)
+app.include_router(test_run_detail_router)
 app.include_router(execution_traces_router)
 app.include_router(evaluation_results_router)
 app.include_router(deployment_gates_router)

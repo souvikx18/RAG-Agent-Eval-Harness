@@ -13,6 +13,7 @@ class TestRunResponse(BaseModel):
     error_message: str | None = None
     latency_ms: int | None = None
     started_at: datetime | None = None
+    completed_at: datetime | None = None
     executor_type: str | None = None
 
     model_config = {
