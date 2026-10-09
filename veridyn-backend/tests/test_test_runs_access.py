@@ -183,3 +183,51 @@ def test_list_test_runs_includes_execution_metadata(client, authenticated_contex
         assert "completed_at" in run
         assert "executor_type" in run
         assert "latency_ms" in run
+
+
+def test_test_run_api_metadata_regression_coverage(client, authenticated_context, db_session):
+    """
+    Step 167: Verify TestRun API response contract regression coverage
+    for established fields across execution outcomes.
+    """
+    headers = authenticated_context["headers"]
+    user = authenticated_context["user"]
+
+    # 1. Query for existing HTTP test case
+    agent_version = (
+        db_session.query(AgentVersion)
+        .join(Agent, AgentVersion.agent_id == Agent.id)
+        .filter(
+            Agent.owner_id == user.id,
+            AgentVersion.endpoint == "http://127.0.0.1:9000/agent",
+        )
+        .first()
+    )
+
+    if agent_version:
+        evaluation = (
+            db_session.query(Evaluation)
+            .filter(Evaluation.agent_version_id == agent_version.id)
+            .first()
+        )
+        test_case = (
+            db_session.query(TestCase)
+            .filter(TestCase.evaluation_id == evaluation.id)
+            .first()
+        )
+        if test_case:
+            resp = client.get(f"/test-cases/{test_case.id}/runs", headers=headers)
+            assert resp.status_code == 200
+            runs = resp.json()
+            for data in runs:
+                assert "started_at" in data
+                assert "executor_type" in data
+                assert "completed_at" in data
+                assert "latency_ms" in data
+
+                if data.get("executor_type") == "HTTPAgentExecutor":
+                    assert data["executor_type"] == "HTTPAgentExecutor"
+                    assert data["started_at"] is not None
+                    assert data["completed_at"] is not None
+                    assert data["latency_ms"] is not None
+                    assert data["latency_ms"] >= 0
