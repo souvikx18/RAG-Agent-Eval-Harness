@@ -350,3 +350,80 @@ def test_test_run_nullable_metadata_persistence(db, execution_hierarchy):
     assert reloaded_legacy.status == "pending"
 
 
+def test_test_run_execution_metadata_boundaries(db, execution_hierarchy):
+    """
+    Step 168: Verify execution metadata behaves correctly at boundary conditions:
+    - started_at and completed_at consistency (completed_at >= started_at)
+    - latency_ms is non-negative and zero-boundary handled
+    - executor_type preserves HTTPAgentExecutor identity
+    - existing failure handling and nullability behavior remain unchanged
+    """
+    tc = execution_hierarchy["tc_http"]
+
+    # 1. Zero-latency boundary with successful HTTP execution
+    test_run_zero_lat = TestRun(
+        id=uuid.uuid4(),
+        test_case_id=tc.id,
+        status="pending",
+    )
+    db.add(test_run_zero_lat)
+    db.commit()
+
+    with patch("app.services.executors.http_executor.HTTPAgentExecutor.execute") as mock_exec:
+        from app.services.executors.agent_executor import AgentExecutionResponse
+        mock_exec.return_value = AgentExecutionResponse(
+            output="Agent response boundary",
+            latency_ms=0,  # Zero latency boundary condition
+            error=None,
+        )
+        executed_zero = execute_test_run(test_run_zero_lat, db)
+
+    assert executed_zero.started_at is not None
+    assert executed_zero.completed_at is not None
+    assert executed_zero.completed_at >= executed_zero.started_at
+    assert executed_zero.executor_type == "HTTPAgentExecutor"
+    assert executed_zero.latency_ms == 0
+    assert executed_zero.latency_ms >= 0
+    assert executed_zero.status == "completed"
+
+    # Reload and verify persistence of boundary values
+    reloaded_zero = db.query(TestRun).filter(TestRun.id == executed_zero.id).first()
+    assert reloaded_zero is not None
+    assert reloaded_zero.executor_type == "HTTPAgentExecutor"
+    assert reloaded_zero.latency_ms == 0
+    assert reloaded_zero.completed_at >= reloaded_zero.started_at
+
+
+def test_test_run_execution_metadata_failure_boundary(db, execution_hierarchy):
+    """
+    Step 168: Verify execution metadata boundary behavior during an executor exception
+    retains executor identity, valid timestamps, and non-negative latency.
+    """
+    tc = execution_hierarchy["tc_http"]
+
+    test_run_fail = TestRun(
+        id=uuid.uuid4(),
+        test_case_id=tc.id,
+        status="pending",
+    )
+    db.add(test_run_fail)
+    db.commit()
+
+    with patch("app.services.executors.http_executor.HTTPAgentExecutor.execute", side_effect=RuntimeError("Gateway timeout")):
+        executed_fail = execute_test_run(test_run_fail, db)
+
+    assert executed_fail.status == "failed"
+    assert executed_fail.started_at is not None
+    assert executed_fail.completed_at is not None
+    assert executed_fail.completed_at >= executed_fail.started_at
+    assert executed_fail.executor_type == "HTTPAgentExecutor"
+    assert executed_fail.latency_ms is not None
+    assert executed_fail.latency_ms >= 0
+
+    reloaded_fail = db.query(TestRun).filter(TestRun.id == executed_fail.id).first()
+    assert reloaded_fail is not None
+    assert reloaded_fail.executor_type == "HTTPAgentExecutor"
+    assert reloaded_fail.latency_ms >= 0
+    assert reloaded_fail.completed_at >= reloaded_fail.started_at
+
+
