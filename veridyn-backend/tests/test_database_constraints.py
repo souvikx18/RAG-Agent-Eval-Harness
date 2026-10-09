@@ -21,6 +21,15 @@ def test_test_run_required_columns_are_not_nullable():
     assert table.c.status.nullable is False
 
 
+def test_test_run_execution_metadata_columns_are_nullable():
+    table = TestRun.__table__
+
+    assert table.c.started_at.nullable is True
+    assert table.c.executor_type.nullable is True
+    assert table.c.completed_at.nullable is True
+    assert table.c.latency_ms.nullable is True
+
+
 def test_evaluation_result_required_columns_are_not_nullable():
     table = EvaluationResult.__table__
 

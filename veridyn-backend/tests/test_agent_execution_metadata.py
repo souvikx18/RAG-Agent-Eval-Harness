@@ -272,3 +272,81 @@ def test_execution_duration_consistency_failed_before_dispatch(db):
     assert executed_run.latency_ms >= 0
     assert executed_run.completed_at >= executed_run.started_at
 
+
+def test_test_run_metadata_persistence_regression(db, execution_hierarchy):
+    """
+    Step 165: Verify started_at and executor_type remain correct after saving to
+    the database and retrieving again.
+    """
+    tc = execution_hierarchy["tc_http"]
+
+    original_started_at = datetime.now(timezone.utc)
+    original_executor_type = "HTTPAgentExecutor"
+
+    test_run = TestRun(
+        id=uuid.uuid4(),
+        test_case_id=tc.id,
+        status="completed",
+        result="passed",
+        actual_output="Output from HTTP execution",
+        latency_ms=120,
+        started_at=original_started_at,
+        completed_at=datetime.now(timezone.utc),
+        executor_type=original_executor_type,
+    )
+    db.add(test_run)
+    db.commit()
+
+    persisted_test_run = (
+        db.query(TestRun)
+        .filter(TestRun.id == test_run.id)
+        .first()
+    )
+
+    assert persisted_test_run is not None
+    assert persisted_test_run.started_at is not None
+
+    persisted_started_at = (
+        persisted_test_run.started_at.replace(tzinfo=timezone.utc)
+        if persisted_test_run.started_at.tzinfo is None
+        else persisted_test_run.started_at
+    )
+    assert persisted_started_at == original_started_at
+    assert persisted_test_run.executor_type == "HTTPAgentExecutor"
+    assert persisted_test_run.status == "completed"
+    assert persisted_test_run.latency_ms == 120
+
+
+def test_test_run_nullable_metadata_persistence(db, execution_hierarchy):
+    """
+    Step 165: Confirming that older or manually created records with None values
+    for started_at and executor_type can still be persisted and loaded correctly.
+    """
+    tc = execution_hierarchy["tc_placeholder"]
+
+    legacy_run = TestRun(
+        id=uuid.uuid4(),
+        test_case_id=tc.id,
+        status="pending",
+        started_at=None,
+        executor_type=None,
+        completed_at=None,
+        latency_ms=None,
+    )
+    db.add(legacy_run)
+    db.commit()
+
+    reloaded_legacy = (
+        db.query(TestRun)
+        .filter(TestRun.id == legacy_run.id)
+        .first()
+    )
+
+    assert reloaded_legacy is not None
+    assert reloaded_legacy.started_at is None
+    assert reloaded_legacy.executor_type is None
+    assert reloaded_legacy.completed_at is None
+    assert reloaded_legacy.latency_ms is None
+    assert reloaded_legacy.status == "pending"
+
+
