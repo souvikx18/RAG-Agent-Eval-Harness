@@ -109,6 +109,22 @@ def test_http_agent_e2e_integration(client, auth_headers, db_session):
     assert "started_at" in detail_data
     assert "executor_type" in detail_data
 
+    # Step 166: Full lifecycle integrity validation: Execution -> DB -> API
+    db_run = db_session.query(TestRun).filter(TestRun.id == run_data["id"]).first()
+    assert db_run is not None
+    assert db_run.started_at is not None
+    assert db_run.completed_at is not None
+    assert db_run.completed_at >= db_run.started_at
+    assert db_run.executor_type == "HTTPAgentExecutor"
+    assert db_run.latency_ms is not None
+    assert db_run.latency_ms >= 0
+
+    # Verify API response matches persisted model values
+    assert detail_data["started_at"] is not None
+    assert detail_data["executor_type"] == db_run.executor_type
+    assert detail_data["completed_at"] is not None
+    assert detail_data["latency_ms"] == db_run.latency_ms
+
     # Verify Evaluation Results
     results_resp = client.get(f"/test-runs/{run_data['id']}/results", headers=auth_headers)
     assert results_resp.status_code == 200
