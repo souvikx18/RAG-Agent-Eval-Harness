@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -11,7 +11,7 @@ from app.models.evaluation import Evaluation
 from app.models.test_case import TestCase
 from app.models.test_run import TestRun
 from app.models.user import User
-from app.schemas.test_run import TestRunResponse
+from app.schemas.test_run import PaginatedTestRunResponse, TestRunResponse
 from app.services.agent_execution_service import execute_test_run
 from app.services.result_service import create_evaluation_result
 
@@ -91,13 +91,15 @@ ALLOWED_TEST_RUN_STATUSES = {"pending", "running", "completed", "failed"}
 
 @router.get(
     "",
-    response_model=list[TestRunResponse],
+    response_model=PaginatedTestRunResponse | list[TestRunResponse],
 )
 def list_test_runs(
     test_case_id: uuid.UUID,
     skip: int = Query(0, ge=0, description="Number of records to skip"),
     limit: int = Query(50, ge=1, le=100, description="Maximum number of records to return"),
     status: str | None = Query(None, description="Optional status filter"),
+    paginated: bool = Query(False, description="Return wrapped pagination envelope"),
+    response: Response = None,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -117,12 +119,29 @@ def list_test_runs(
             )
         query = query.filter(TestRun.status == status)
 
-    return (
+    total = query.count()
+    items = (
         query.order_by(TestRun.created_at.desc(), TestRun.id.desc())
         .offset(skip)
         .limit(limit)
         .all()
     )
+    has_more = (skip + len(items)) < total
+
+    if response is not None:
+        response.headers["X-Total-Count"] = str(total)
+        response.headers["X-Has-More"] = str(has_more).lower()
+
+    if paginated:
+        return PaginatedTestRunResponse(
+            items=items,
+            total=total,
+            skip=skip,
+            limit=limit,
+            has_more=has_more,
+        )
+
+    return items
 
 
 detail_router = APIRouter(
@@ -133,12 +152,14 @@ detail_router = APIRouter(
 
 @detail_router.get(
     "",
-    response_model=list[TestRunResponse],
+    response_model=PaginatedTestRunResponse | list[TestRunResponse],
 )
 def list_user_test_runs(
     skip: int = Query(0, ge=0, description="Number of records to skip"),
     limit: int = Query(50, ge=1, le=100, description="Maximum number of records to return"),
     status: str | None = Query(None, description="Optional status filter"),
+    paginated: bool = Query(False, description="Return wrapped pagination envelope"),
+    response: Response = None,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -159,12 +180,29 @@ def list_user_test_runs(
             )
         query = query.filter(TestRun.status == status)
 
-    return (
+    total = query.count()
+    items = (
         query.order_by(TestRun.created_at.desc(), TestRun.id.desc())
         .offset(skip)
         .limit(limit)
         .all()
     )
+    has_more = (skip + len(items)) < total
+
+    if response is not None:
+        response.headers["X-Total-Count"] = str(total)
+        response.headers["X-Has-More"] = str(has_more).lower()
+
+    if paginated:
+        return PaginatedTestRunResponse(
+            items=items,
+            total=total,
+            skip=skip,
+            limit=limit,
+            has_more=has_more,
+        )
+
+    return items
 
 
 def get_owned_test_run(

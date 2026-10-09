@@ -342,3 +342,132 @@ def test_list_test_runs_pagination_and_filtering(client, authenticated_context, 
         db_session.commit()
 
 
+def test_list_test_runs_pagination_metadata(client, authenticated_context, db_session):
+    """
+    Step 170: Verify TestRun pagination metadata envelope and headers:
+    - Empty datasets (total=0, items=[], has_more=False)
+    - First page and subsequent pages
+    - Final partial page
+    - Status-filtered totals
+    - has_more when more records exist (True)
+    - has_more when no additional records exist (False)
+    - Consistent totals, skip, limit, and items structure
+    - Both /test-cases/{id}/runs and /test-runs endpoints
+    """
+    test_case_id = authenticated_context["own_test_case_id"]
+    headers = authenticated_context["headers"]
+
+    # 1. Empty dataset test: query nonexistent test case with pagination
+    # (Or use an owned test case with a filter matching 0 items)
+    resp_empty = client.get(
+        f"/test-cases/{test_case_id}/runs?status=pending&paginated=true",
+        headers=headers,
+    )
+    assert resp_empty.status_code == 200
+    meta_empty = resp_empty.json()
+    assert meta_empty["items"] == []
+    assert meta_empty["total"] == 0
+    assert meta_empty["skip"] == 0
+    assert meta_empty["has_more"] is False
+
+    # Seed 7 test runs for controlled pagination testing: 4 completed, 3 failed
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
+    seeded_ids = []
+    for i in range(7):
+        status_val = "completed" if i < 4 else "failed"
+        run = TestRun(
+            id=uuid.uuid4(),
+            test_case_id=uuid.UUID(test_case_id),
+            status=status_val,
+            actual_output=f"Pagination meta output {i}",
+            latency_ms=50 + i,
+            started_at=now,
+            completed_at=now,
+            executor_type="HTTPAgentExecutor",
+        )
+        db_session.add(run)
+        seeded_ids.append(run.id)
+    db_session.commit()
+
+    try:
+        # 2. First page with paginated=true (limit=3) -> more records exist
+        resp_p1 = client.get(
+            f"/test-cases/{test_case_id}/runs?skip=0&limit=3&paginated=true",
+            headers=headers,
+        )
+        assert resp_p1.status_code == 200
+        p1 = resp_p1.json()
+        assert p1["skip"] == 0
+        assert p1["limit"] == 3
+        assert len(p1["items"]) == 3
+        assert p1["total"] >= 7
+        assert p1["has_more"] is True
+
+        # Check pagination headers
+        assert "X-Total-Count" in resp_p1.headers
+        assert int(resp_p1.headers["X-Total-Count"]) == p1["total"]
+        assert resp_p1.headers["X-Has-More"] == "true"
+
+        # 3. Subsequent page (skip=3, limit=3)
+        resp_p2 = client.get(
+            f"/test-cases/{test_case_id}/runs?skip=3&limit=3&paginated=true",
+            headers=headers,
+        )
+        assert resp_p2.status_code == 200
+        p2 = resp_p2.json()
+        assert p2["skip"] == 3
+        assert p2["limit"] == 3
+        assert len(p2["items"]) == 3
+        assert p2["total"] == p1["total"]
+
+        # 4. Final page / beyond end -> has_more is False
+        resp_p_end = client.get(
+            f"/test-cases/{test_case_id}/runs?skip={p1['total']}&limit=10&paginated=true",
+            headers=headers,
+        )
+        assert resp_p_end.status_code == 200
+        p_end = resp_p_end.json()
+        assert p_end["items"] == []
+        assert p_end["total"] == p1["total"]
+        assert p_end["has_more"] is False
+        assert resp_p_end.headers["X-Has-More"] == "false"
+
+        # 5. Status-filtered totals (status=failed, skip=0, limit=2)
+        resp_filtered = client.get(
+            f"/test-cases/{test_case_id}/runs?status=failed&skip=0&limit=2&paginated=true",
+            headers=headers,
+        )
+        assert resp_filtered.status_code == 200
+        filtered_meta = resp_filtered.json()
+        assert filtered_meta["total"] >= 3
+        assert len(filtered_meta["items"]) == 2
+        assert all(item["status"] == "failed" for item in filtered_meta["items"])
+        assert filtered_meta["has_more"] is True
+
+        # Final partial page for status=failed (skip=2, limit=2)
+        resp_failed_p2 = client.get(
+            f"/test-cases/{test_case_id}/runs?status=failed&skip=2&limit=2&paginated=true",
+            headers=headers,
+        )
+        assert resp_failed_p2.status_code == 200
+        meta_failed_p2 = resp_failed_p2.json()
+        assert len(meta_failed_p2["items"]) >= 1
+        assert meta_failed_p2["total"] == filtered_meta["total"]
+
+        # 6. Global /test-runs endpoint with paginated metadata
+        resp_global = client.get("/test-runs?skip=0&limit=5&paginated=true", headers=headers)
+        assert resp_global.status_code == 200
+        global_data = resp_global.json()
+        assert "items" in global_data
+        assert "total" in global_data
+        assert "skip" in global_data
+        assert "limit" in global_data
+        assert "has_more" in global_data
+        assert global_data["total"] >= 7
+    finally:
+        db_session.query(TestRun).filter(TestRun.id.in_(seeded_ids)).delete(synchronize_session=False)
+        db_session.commit()
+
+
+

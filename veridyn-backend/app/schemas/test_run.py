@@ -19,3 +19,11 @@ class TestRunResponse(BaseModel):
     model_config = {
         "from_attributes": True
     }
+
+
+class PaginatedTestRunResponse(BaseModel):
+    items: list[TestRunResponse]
+    total: int
+    skip: int
+    limit: int
+    has_more: bool
