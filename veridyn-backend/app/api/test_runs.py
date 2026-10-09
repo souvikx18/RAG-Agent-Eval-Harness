@@ -87,6 +87,20 @@ def create_test_run(
 
 
 ALLOWED_TEST_RUN_STATUSES = {"pending", "running", "completed", "failed"}
+ALLOWED_SORT_FIELDS = {"created_at", "started_at", "completed_at", "latency_ms", "status"}
+ALLOWED_SORT_ORDERS = {"asc", "desc"}
+
+
+def apply_test_run_sorting(query, sort_by: str, order: str):
+    column = getattr(TestRun, sort_by)
+    if order == "asc":
+        # Nulls last for ascending so populated values are ordered naturally
+        order_clause = column.asc().nulls_last() if hasattr(column, "nulls_last") else column.asc()
+        id_clause = TestRun.id.asc()
+    else:
+        order_clause = column.desc().nulls_last() if hasattr(column, "nulls_last") else column.desc()
+        id_clause = TestRun.id.desc()
+    return query.order_by(order_clause, id_clause)
 
 
 @router.get(
@@ -98,6 +112,8 @@ def list_test_runs(
     skip: int = Query(0, ge=0, description="Number of records to skip"),
     limit: int = Query(50, ge=1, le=100, description="Maximum number of records to return"),
     status: str | None = Query(None, description="Optional status filter"),
+    sort_by: str = Query("created_at", description="Field to sort by"),
+    order: str = Query("desc", description="Sort direction (asc or desc)"),
     paginated: bool = Query(False, description="Return wrapped pagination envelope"),
     response: Response = None,
     current_user: User = Depends(get_current_user),
@@ -108,6 +124,17 @@ def list_test_runs(
         current_user,
         db,
     )
+
+    if sort_by not in ALLOWED_SORT_FIELDS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Invalid sort_by: '{sort_by}'. Allowed fields: {sorted(ALLOWED_SORT_FIELDS)}",
+        )
+    if order not in ALLOWED_SORT_ORDERS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Invalid order: '{order}'. Allowed values: {sorted(ALLOWED_SORT_ORDERS)}",
+        )
 
     query = db.query(TestRun).filter(TestRun.test_case_id == test_case.id)
 
@@ -121,7 +148,7 @@ def list_test_runs(
 
     total = query.count()
     items = (
-        query.order_by(TestRun.created_at.desc(), TestRun.id.desc())
+        apply_test_run_sorting(query, sort_by, order)
         .offset(skip)
         .limit(limit)
         .all()
@@ -158,11 +185,24 @@ def list_user_test_runs(
     skip: int = Query(0, ge=0, description="Number of records to skip"),
     limit: int = Query(50, ge=1, le=100, description="Maximum number of records to return"),
     status: str | None = Query(None, description="Optional status filter"),
+    sort_by: str = Query("created_at", description="Field to sort by"),
+    order: str = Query("desc", description="Sort direction (asc or desc)"),
     paginated: bool = Query(False, description="Return wrapped pagination envelope"),
     response: Response = None,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    if sort_by not in ALLOWED_SORT_FIELDS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Invalid sort_by: '{sort_by}'. Allowed fields: {sorted(ALLOWED_SORT_FIELDS)}",
+        )
+    if order not in ALLOWED_SORT_ORDERS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Invalid order: '{order}'. Allowed values: {sorted(ALLOWED_SORT_ORDERS)}",
+        )
+
     query = (
         db.query(TestRun)
         .join(TestCase, TestRun.test_case_id == TestCase.id)
@@ -182,7 +222,7 @@ def list_user_test_runs(
 
     total = query.count()
     items = (
-        query.order_by(TestRun.created_at.desc(), TestRun.id.desc())
+        apply_test_run_sorting(query, sort_by, order)
         .offset(skip)
         .limit(limit)
         .all()

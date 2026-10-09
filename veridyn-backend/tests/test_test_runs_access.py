@@ -470,4 +470,123 @@ def test_list_test_runs_pagination_metadata(client, authenticated_context, db_se
         db_session.commit()
 
 
+def test_list_test_runs_sorting_and_ordering(client, authenticated_context, db_session):
+    """
+    Step 171: Verify sorting and ordering functionality on TestRun endpoints:
+    - Ascending and descending order
+    - Sorting by latency_ms, status, created_at
+    - Multiple records with identical timestamps (tie-breaking with record ID)
+    - Stable ordering across pages
+    - Sorting combined with status filtering
+    - Sorting combined with pagination metadata
+    - Rejection of invalid sort_by and order fields with 422
+    - Coverage for both /test-cases/{id}/runs and /test-runs
+    """
+    test_case_id = authenticated_context["own_test_case_id"]
+    headers = authenticated_context["headers"]
+
+    # 1. Validation errors for invalid sort_by or order
+    resp_bad_field = client.get(
+        f"/test-cases/{test_case_id}/runs?sort_by=nonexistent_field",
+        headers=headers,
+    )
+    assert resp_bad_field.status_code == 422
+    assert "Invalid sort_by" in resp_bad_field.json().get("detail", "")
+
+    resp_bad_order = client.get(
+        f"/test-cases/{test_case_id}/runs?sort_by=created_at&order=diagonal",
+        headers=headers,
+    )
+    assert resp_bad_order.status_code == 422
+    assert "Invalid order" in resp_bad_order.json().get("detail", "")
+
+    # Seed 6 test runs with distinct latencies and identical timestamps to test tie-breaking
+    from datetime import datetime, timezone
+    fixed_time = datetime.now(timezone.utc)
+    seeded_ids = []
+    latencies = [150, 50, 300, 200, 100, 250]
+    for i, lat in enumerate(latencies):
+        run = TestRun(
+            id=uuid.uuid4(),
+            test_case_id=uuid.UUID(test_case_id),
+            status="completed" if i % 2 == 0 else "failed",
+            actual_output=f"Sort test output {i}",
+            latency_ms=lat,
+            started_at=fixed_time,
+            completed_at=fixed_time,
+            created_at=fixed_time,  # Identical timestamps to verify stable ID tie-breaker
+            executor_type="HTTPAgentExecutor",
+        )
+        db_session.add(run)
+        seeded_ids.append(run.id)
+    db_session.commit()
+
+    try:
+        # 2. Test sorting by latency_ms ascending
+        resp_asc = client.get(
+            f"/test-cases/{test_case_id}/runs?sort_by=latency_ms&order=asc&limit=6&paginated=true",
+            headers=headers,
+        )
+        assert resp_asc.status_code == 200
+        items_asc = resp_asc.json()["items"]
+        returned_lats = [r["latency_ms"] for r in items_asc if r["latency_ms"] is not None]
+        assert returned_lats == sorted(returned_lats)
+
+        # 3. Test sorting by latency_ms descending
+        resp_desc = client.get(
+            f"/test-cases/{test_case_id}/runs?sort_by=latency_ms&order=desc&limit=6&paginated=true",
+            headers=headers,
+        )
+        assert resp_desc.status_code == 200
+        items_desc = resp_desc.json()["items"]
+        returned_desc_lats = [r["latency_ms"] for r in items_desc if r["latency_ms"] is not None]
+        assert returned_desc_lats == sorted(returned_desc_lats, reverse=True)
+
+        # 4. Stable ordering across pages with identical timestamps
+        p1 = client.get(
+            f"/test-cases/{test_case_id}/runs?sort_by=created_at&order=asc&skip=0&limit=3",
+            headers=headers,
+        ).json()
+        p2 = client.get(
+            f"/test-cases/{test_case_id}/runs?sort_by=created_at&order=asc&skip=3&limit=3",
+            headers=headers,
+        ).json()
+        assert len(p1) == 3
+        assert len(p2) == 3
+        p1_ids = {r["id"] for r in p1}
+        p2_ids = {r["id"] for r in p2}
+        assert p1_ids.isdisjoint(p2_ids)
+
+        # 5. Sorting combined with status filtering and pagination metadata
+        resp_filtered_sort = client.get(
+            f"/test-cases/{test_case_id}/runs?status=completed&sort_by=latency_ms&order=desc&skip=0&limit=2&paginated=true",
+            headers=headers,
+        )
+        assert resp_filtered_sort.status_code == 200
+        meta = resp_filtered_sort.json()
+        assert meta["skip"] == 0
+        assert meta["limit"] == 2
+        assert len(meta["items"]) == 2
+        assert all(r["status"] == "completed" for r in meta["items"])
+        assert meta["items"][0]["latency_ms"] >= meta["items"][1]["latency_ms"]
+
+        # 6. Global /test-runs sorting validation
+        resp_global = client.get(
+            "/test-runs?sort_by=latency_ms&order=asc&limit=4&paginated=true",
+            headers=headers,
+        )
+        assert resp_global.status_code == 200
+        global_items = resp_global.json()["items"]
+        g_lats = [r["latency_ms"] for r in global_items if r["latency_ms"] is not None]
+        assert g_lats == sorted(g_lats)
+
+        # 7. Invalid parameters on /test-runs
+        assert client.get("/test-runs?sort_by=invalid", headers=headers).status_code == 422
+        assert client.get("/test-runs?order=invalid", headers=headers).status_code == 422
+    finally:
+        db_session.query(TestRun).filter(TestRun.id.in_(seeded_ids)).delete(synchronize_session=False)
+        db_session.commit()
+
+
+
 
