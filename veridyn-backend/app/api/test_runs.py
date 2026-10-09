@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -86,12 +86,18 @@ def create_test_run(
     return test_run
 
 
+ALLOWED_TEST_RUN_STATUSES = {"pending", "running", "completed", "failed"}
+
+
 @router.get(
     "",
     response_model=list[TestRunResponse],
 )
 def list_test_runs(
     test_case_id: uuid.UUID,
+    skip: int = Query(0, ge=0, description="Number of records to skip"),
+    limit: int = Query(50, ge=1, le=100, description="Maximum number of records to return"),
+    status: str | None = Query(None, description="Optional status filter"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -101,10 +107,20 @@ def list_test_runs(
         db,
     )
 
+    query = db.query(TestRun).filter(TestRun.test_case_id == test_case.id)
+
+    if status is not None:
+        if status not in ALLOWED_TEST_RUN_STATUSES:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Invalid status: {status}. Allowed statuses: {sorted(ALLOWED_TEST_RUN_STATUSES)}",
+            )
+        query = query.filter(TestRun.status == status)
+
     return (
-        db.query(TestRun)
-        .filter(TestRun.test_case_id == test_case.id)
-        .order_by(TestRun.created_at.desc())
+        query.order_by(TestRun.created_at.desc(), TestRun.id.desc())
+        .offset(skip)
+        .limit(limit)
         .all()
     )
 
@@ -113,6 +129,42 @@ detail_router = APIRouter(
     prefix="/test-runs",
     tags=["Test Runs"],
 )
+
+
+@detail_router.get(
+    "",
+    response_model=list[TestRunResponse],
+)
+def list_user_test_runs(
+    skip: int = Query(0, ge=0, description="Number of records to skip"),
+    limit: int = Query(50, ge=1, le=100, description="Maximum number of records to return"),
+    status: str | None = Query(None, description="Optional status filter"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    query = (
+        db.query(TestRun)
+        .join(TestCase, TestRun.test_case_id == TestCase.id)
+        .join(Evaluation, TestCase.evaluation_id == Evaluation.id)
+        .join(AgentVersion, Evaluation.agent_version_id == AgentVersion.id)
+        .join(Agent, AgentVersion.agent_id == Agent.id)
+        .filter(Agent.owner_id == current_user.id)
+    )
+
+    if status is not None:
+        if status not in ALLOWED_TEST_RUN_STATUSES:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Invalid status: {status}. Allowed statuses: {sorted(ALLOWED_TEST_RUN_STATUSES)}",
+            )
+        query = query.filter(TestRun.status == status)
+
+    return (
+        query.order_by(TestRun.created_at.desc(), TestRun.id.desc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
 
 
 def get_owned_test_run(
