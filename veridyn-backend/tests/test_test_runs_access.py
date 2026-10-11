@@ -860,3 +860,104 @@ def test_test_run_api_combined_query_integration(client, authenticated_context, 
         db_session.query(TestCase).filter(TestCase.id == dedicated_tc.id).delete(synchronize_session=False)
         db_session.commit()
 
+
+def test_test_run_api_error_handling_and_response_consistency(client, authenticated_context):
+    """
+    Step 174: TestRun API Error Handling & Response Consistency.
+    - Standardize error responses (422, 401/403, 404).
+    - Test invalid requests: malformed TestRun IDs, invalid pagination/sorting, unsupported status filters.
+    - Protect internal details: responses must not leak stack traces, database credentials, internal paths, or secrets.
+    - Verify response consistency: error responses contain {"detail": ...}, successful responses retain existing contracts.
+    - Confirm normal execution behavior is unaffected.
+    """
+    test_case_id = authenticated_context["own_test_case_id"]
+    headers = authenticated_context["headers"]
+
+    # 1. Nonexistent TestRun ID -> 404 with structured detail
+    random_uuid = str(uuid.uuid4())
+    resp_404 = client.get(f"/test-runs/{random_uuid}", headers=headers)
+    assert resp_404.status_code == 404
+    body_404 = resp_404.json()
+    assert "detail" in body_404
+    assert body_404["detail"] == "Test run not found"
+
+    # 2. Malformed TestRun ID (not a valid UUID) -> 422 validation error
+    malformed_ids = [
+        "not-a-valid-uuid",
+        "12345",
+        "invalid-uuid-1234-5678",
+        "00000000-0000-0000-0000-00000000000Z",
+    ]
+    for m_id in malformed_ids:
+        resp_malformed = client.get(f"/test-runs/{m_id}", headers=headers)
+        assert resp_malformed.status_code == 422
+        body_malformed = resp_malformed.json()
+        assert "detail" in body_malformed
+
+    # Malformed TestCase ID on nested endpoint -> 422
+    for m_id in malformed_ids:
+        resp_malformed_tc = client.get(f"/test-cases/{m_id}/runs", headers=headers)
+        assert resp_malformed_tc.status_code == 422
+        assert "detail" in resp_malformed_tc.json()
+
+    # 3. Unauthenticated requests -> 401 or 403
+    unauth_endpoints = [
+        ("GET", f"/test-cases/{test_case_id}/runs"),
+        ("POST", f"/test-cases/{test_case_id}/runs"),
+        ("GET", f"/test-runs/{random_uuid}"),
+        ("GET", "/test-runs"),
+    ]
+    for method, ep in unauth_endpoints:
+        # Missing auth header
+        if method == "GET":
+            resp_no_auth = client.get(ep)
+        else:
+            resp_no_auth = client.post(ep)
+        assert resp_no_auth.status_code in (401, 403)
+        assert "detail" in resp_no_auth.json()
+
+        # Malformed / invalid bearer token
+        bad_headers = {"Authorization": "Bearer invalid_garbage_token_value"}
+        if method == "GET":
+            resp_bad_token = client.get(ep, headers=bad_headers)
+        else:
+            resp_bad_token = client.post(ep, headers=bad_headers)
+        assert resp_bad_token.status_code == 401
+        assert "detail" in resp_bad_token.json()
+        assert resp_bad_token.json()["detail"] == "Invalid authentication token"
+
+    # 4. Protection against leaking internal implementation details
+    # Query with SQL injection attempt, internal path payloads, or extreme bounds
+    suspicious_queries = [
+        "?status=SELECT%20*%20FROM%20users",
+        "?sort_by=secret_table_column",
+        "?order=UNION%20SELECT",
+        "?skip=-99999999999999999999999999999999999",
+        "?limit=99999999999999999999999999999999999",
+    ]
+    for sq in suspicious_queries:
+        for ep in [f"/test-cases/{test_case_id}/runs", "/test-runs"]:
+            resp_err = client.get(f"{ep}{sq}", headers=headers)
+            assert resp_err.status_code in (422, 400)
+            err_text = resp_err.text.lower()
+            # Ensure no database connection string or passwords or stack traces leaked
+            assert "traceback" not in err_text
+            assert "postgresql://" not in err_text
+            assert "psycopg2" not in err_text
+            assert "password_hash" not in err_text
+            assert "veridyn_password" not in err_text
+            assert "file \"/" not in err_text
+            assert "file \"c:\\" not in err_text
+
+    # 5. Response consistency on normal operations
+    resp_success = client.get(f"/test-cases/{test_case_id}/runs?paginated=true", headers=headers)
+    assert resp_success.status_code == 200
+    success_json = resp_success.json()
+    assert "items" in success_json
+    assert "total" in success_json
+    assert "skip" in success_json
+    assert "limit" in success_json
+    assert "has_more" in success_json
+    assert isinstance(success_json["items"], list)
+
+
