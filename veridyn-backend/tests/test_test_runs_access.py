@@ -1455,6 +1455,99 @@ def test_test_run_execution_reliability_and_failure_recovery(client, authenticat
     db_session.commit()
 
 
+def test_test_run_concurrency_and_race_condition_safety(authenticated_context, db_session):
+    """
+    Step 180: TestRun Concurrency & Race-Condition Safety.
+    - Submits multiple simultaneous TestRun creation & execution requests concurrently
+      across threads with dedicated database sessions.
+    - Verifies that concurrent requests maintain completely independent execution records.
+    - Confirms IDs, statuses, started_at, completed_at, latency_ms, executor_type, and
+      evaluation results remain strictly isolated with no cross-contamination or overwrites.
+    - Confirms that metric registry configurations and evaluation snapshots remain safe
+      and correctly attributed during concurrent evaluations.
+    """
+    import concurrent.futures
+    from app.core.database import SessionLocal
+    from app.services.agent_execution_service import execute_test_run
+    from app.services.result_service import create_evaluation_result
+    from app.models.evaluation_result import EvaluationResult
+
+    test_case_id = uuid.UUID(authenticated_context["own_test_case_id"])
+    num_concurrent_runs = 5
+
+    def worker_execute(run_idx: int):
+        thread_db = SessionLocal()
+        try:
+            # 1. Create a distinct pending TestRun in its own transaction
+            run = TestRun(
+                id=uuid.uuid4(),
+                test_case_id=test_case_id,
+                status="pending",
+            )
+            thread_db.add(run)
+            thread_db.commit()
+            thread_db.refresh(run)
+
+            # 2. Execute and evaluate simultaneously
+            executed = execute_test_run(run, thread_db)
+            results = create_evaluation_result(executed, thread_db)
+
+            return {
+                "idx": run_idx,
+                "run_id": executed.id,
+                "status": executed.status,
+                "result": executed.result,
+                "executor_type": executed.executor_type,
+                "started_at": executed.started_at,
+                "completed_at": executed.completed_at,
+                "latency_ms": executed.latency_ms,
+                "results_count": len(results),
+                "metric_names": {r.metric_name for r in results},
+            }
+        finally:
+            thread_db.close()
+
+    # Launch threads concurrently
+    with concurrent.futures.ThreadPoolExecutor(max_workers=num_concurrent_runs) as executor:
+        futures = [executor.submit(worker_execute, i) for i in range(num_concurrent_runs)]
+        outcomes = [f.result() for f in futures]
+
+    created_run_ids = [outcome["run_id"] for outcome in outcomes]
+    assert len(created_run_ids) == num_concurrent_runs
+    # All IDs must be unique
+    assert len(set(created_run_ids)) == num_concurrent_runs
+
+    # Verify each execution outcome is fully formed and uncorrupted
+    for outcome in outcomes:
+        assert outcome["status"] in ["completed", "failed"]
+        assert outcome["executor_type"] is not None
+        assert outcome["started_at"] is not None
+        assert outcome["completed_at"] is not None
+        assert outcome["completed_at"] >= outcome["started_at"]
+        assert outcome["latency_ms"] is not None
+        assert outcome["latency_ms"] >= 0
+        assert outcome["results_count"] == 2
+        assert outcome["metric_names"] == {"correctness", "latency"}
+
+    # Query verification from main session: each record is intact and isolated
+    persisted_runs = db_session.query(TestRun).filter(TestRun.id.in_(created_run_ids)).all()
+    assert len(persisted_runs) == num_concurrent_runs
+
+    for pr in persisted_runs:
+        eval_results = db_session.query(EvaluationResult).filter(EvaluationResult.test_run_id == pr.id).all()
+        assert len(eval_results) == 2
+        for er in eval_results:
+            assert er.test_run_id == pr.id
+            assert er.configuration_version >= 1
+            assert isinstance(er.configuration, dict)
+
+    # Clean up created records
+    db_session.query(EvaluationResult).filter(EvaluationResult.test_run_id.in_(created_run_ids)).delete(synchronize_session=False)
+    db_session.query(TestRun).filter(TestRun.id.in_(created_run_ids)).delete(synchronize_session=False)
+    db_session.commit()
+
+
+
 
 
 
