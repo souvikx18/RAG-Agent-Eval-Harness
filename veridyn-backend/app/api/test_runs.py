@@ -1,3 +1,4 @@
+import logging
 import uuid
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, status
@@ -14,6 +15,8 @@ from app.models.user import User
 from app.schemas.test_run import PaginatedTestRunResponse, TestRunResponse
 from app.services.agent_execution_service import execute_test_run
 from app.services.result_service import create_evaluation_result
+
+logger = logging.getLogger("veridyn.api.test_runs")
 
 router = APIRouter(
     prefix="/test-cases/{test_case_id}/runs",
@@ -88,9 +91,11 @@ def create_test_run(
     db.add(test_run)
     db.commit()
     db.refresh(test_run)
+    logger.info("Test run created: test_run_id=%s test_case_id=%s user_id=%s", test_run.id, test_case.id, current_user.id)
 
     test_run = execute_test_run(test_run, db)
     create_evaluation_result(test_run, db)
+    logger.info("Test run executed and evaluated: test_run_id=%s status=%s", test_run.id, test_run.status)
     return test_run
 
 

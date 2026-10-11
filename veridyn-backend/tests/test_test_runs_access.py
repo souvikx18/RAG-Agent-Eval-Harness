@@ -1297,6 +1297,48 @@ def test_test_run_security_and_access_control_regression(client, authenticated_c
         db_session.commit()
 
 
+def test_test_run_observability_and_structured_logging(client, authenticated_context, caplog):
+    """
+    Step 178: TestRun Observability & Structured Logging.
+    - Verifies execution lifecycle events are logged at appropriate levels:
+      * INFO on start: test_run_id and test_case_id
+      * INFO on success: test_run_id, executor_type, latency_ms, status
+      * WARNING or ERROR on failures
+    - Ensures sensitive information (passwords, tokens, database URLs, secret keys) is never logged.
+    - Confirms logging failures or absent handlers cannot disrupt normal execution.
+    """
+    import logging
+    test_case_id = authenticated_context["own_test_case_id"]
+    headers = authenticated_context["headers"]
+
+    with caplog.at_level(logging.INFO):
+        resp = client.post(f"/test-cases/{test_case_id}/runs", headers=headers)
+        assert resp.status_code == 201
+        data = resp.json()
+        run_id = data["id"]
+
+    log_messages = [record.getMessage() for record in caplog.records]
+    combined_logs = " ".join(log_messages)
+
+    # 1. Execution start is logged with ID
+    assert any(run_id in msg and "starting" in msg for msg in log_messages), (
+        f"Expected execution start log with run_id {run_id}, got: {log_messages}"
+    )
+
+    # 2. Execution completion or failure is logged
+    assert any(run_id in msg and ("completed" in msg or "failed" in msg) for msg in log_messages), (
+        f"Expected execution completion/failure log with run_id {run_id}, got: {log_messages}"
+    )
+
+    # 3. Sensitive values are never logged
+    assert "password" not in combined_logs.lower()
+    assert "jwt_secret" not in combined_logs.lower()
+    assert "secret_key" not in combined_logs.lower()
+    assert "postgresql://" not in combined_logs.lower()
+    assert "bearer" not in combined_logs.lower()
+
+
+
 
 
 

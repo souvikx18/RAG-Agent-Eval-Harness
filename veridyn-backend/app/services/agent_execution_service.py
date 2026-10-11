@@ -1,3 +1,4 @@
+import logging
 import time
 from datetime import datetime, timezone
 
@@ -12,6 +13,8 @@ from app.services.executors.agent_executor import (
 )
 from app.services.executors.factory import get_agent_executor
 
+logger = logging.getLogger("veridyn.execution")
+
 
 def execute_test_run(
     test_run: TestRun,
@@ -19,6 +22,11 @@ def execute_test_run(
 ) -> TestRun:
 
     start_time = time.perf_counter()
+    logger.info(
+        "TestRun execution starting: test_run_id=%s test_case_id=%s",
+        test_run.id,
+        test_run.test_case_id,
+    )
 
     try:
         test_case = (
@@ -90,11 +98,25 @@ def execute_test_run(
             test_run.error_message = response.error
             test_run.actual_output = None
             test_run.result = "failed"
+            logger.warning(
+                "TestRun execution failed: test_run_id=%s executor_type=%s latency_ms=%s error=%s",
+                test_run.id,
+                test_run.executor_type,
+                test_run.latency_ms,
+                test_run.error_message,
+            )
         else:
             test_run.status = "completed"
             test_run.actual_output = response.output
             test_run.result = "passed"
             test_run.error_message = None
+            logger.info(
+                "TestRun execution completed successfully: test_run_id=%s executor_type=%s latency_ms=%s status=%s",
+                test_run.id,
+                test_run.executor_type,
+                test_run.latency_ms,
+                test_run.status,
+            )
 
     except Exception as exc:
         test_run.status = "failed"
@@ -110,6 +132,13 @@ def execute_test_run(
             int(
                 (test_run.completed_at - test_run.started_at).total_seconds() * 1000
             ),
+        )
+        logger.error(
+            "TestRun execution exception occurred: test_run_id=%s executor_type=%s latency_ms=%s error=%s",
+            test_run.id,
+            getattr(test_run, "executor_type", None),
+            test_run.latency_ms,
+            test_run.error_message,
         )
 
     db.commit()
