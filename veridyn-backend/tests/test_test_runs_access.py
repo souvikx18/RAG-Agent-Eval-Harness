@@ -1059,4 +1059,132 @@ def test_test_run_openapi_contract_specification(client):
     assert "has_more" in paginated_props
 
 
+def test_test_run_query_performance_and_optimization(client, authenticated_context, db_session):
+    """
+    Step 176: TestRun API Performance & Database Query Optimization.
+    - Verifies that filtering, sorting, and pagination execute efficiently at the database level.
+    - Confirms that query counts do not grow with the number of records returned (O(1) query count, no N+1 query patterns).
+    - Tests performance with a larger dataset (25 test runs).
+    - Verifies deterministic pagination and metadata with large limits and offsets.
+    """
+    from sqlalchemy import event
+    from app.core.database import engine
+    from datetime import datetime, timezone, timedelta
+
+    headers = authenticated_context["headers"]
+
+    # 1. Create a dedicated TestCase for deterministic performance evaluation
+    existing_tc = db_session.query(TestCase).filter(TestCase.id == uuid.UUID(authenticated_context["own_test_case_id"])).first()
+    perf_tc = TestCase(
+        id=uuid.uuid4(),
+        evaluation_id=existing_tc.evaluation_id,
+        name="Performance Optimization TestCase",
+        category="performance",
+        description="TestCase for measuring query counts and pagination efficiency under load",
+        input_data='{"prompt": "perf_test"}',
+        expected_behavior="constant query count regardless of page size",
+    )
+    db_session.add(perf_tc)
+    db_session.commit()
+
+    base_time = datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+    seeded_ids = []
+
+    # 2. Seed 25 TestRuns
+    for i in range(25):
+        t = base_time + timedelta(minutes=i)
+        run = TestRun(
+            id=uuid.uuid4(),
+            test_case_id=perf_tc.id,
+            status="completed" if i % 2 == 0 else "failed",
+            actual_output=f"Perf run output {i}",
+            latency_ms=100 + i * 10,
+            started_at=t,
+            completed_at=t + timedelta(milliseconds=100 + i * 10),
+            created_at=t,
+            executor_type="HTTPAgentExecutor",
+        )
+        db_session.add(run)
+        seeded_ids.append(run.id)
+    db_session.commit()
+
+    try:
+        # 3. Verify query count independence (no N+1 queries)
+        queries_batch_5 = []
+        queries_batch_20 = []
+
+        def capture_query(query_list):
+            def handler(conn, cursor, statement, parameters, context, executemany):
+                query_list.append(statement)
+            return handler
+
+        # Warm up endpoint once so initial connection / session state is initialized
+        warmup_resp = client.get(f"/test-cases/{perf_tc.id}/runs?limit=1&paginated=true", headers=headers)
+        assert warmup_resp.status_code == 200
+
+        handler_5 = capture_query(queries_batch_5)
+        event.listen(engine, "before_cursor_execute", handler_5)
+        resp_5 = client.get(f"/test-cases/{perf_tc.id}/runs?limit=5&paginated=true", headers=headers)
+        event.remove(engine, "before_cursor_execute", handler_5)
+
+        assert resp_5.status_code == 200
+        data_5 = resp_5.json()
+        assert len(data_5["items"]) == 5
+        assert data_5["total"] == 25
+
+        handler_20 = capture_query(queries_batch_20)
+        event.listen(engine, "before_cursor_execute", handler_20)
+        resp_20 = client.get(f"/test-cases/{perf_tc.id}/runs?limit=20&paginated=true", headers=headers)
+        event.remove(engine, "before_cursor_execute", handler_20)
+
+        assert resp_20.status_code == 200
+        data_20 = resp_20.json()
+        assert len(data_20["items"]) == 20
+        assert data_20["total"] == 25
+
+        # Query counts should be constant regardless of page size (e.g. auth user + parent check + count + paged select = 4 queries)
+        assert len(queries_batch_5) == 4, f"Expected 4 queries for limit=5, got {len(queries_batch_5)}"
+        assert len(queries_batch_20) == 4, f"Expected 4 queries for limit=20, got {len(queries_batch_20)}"
+
+        # 4. Large pagination traversal across all 25 records
+        p1 = client.get(f"/test-cases/{perf_tc.id}/runs?skip=0&limit=10&paginated=true", headers=headers).json()
+        p2 = client.get(f"/test-cases/{perf_tc.id}/runs?skip=10&limit=10&paginated=true", headers=headers).json()
+        p3 = client.get(f"/test-cases/{perf_tc.id}/runs?skip=20&limit=10&paginated=true", headers=headers).json()
+
+        assert len(p1["items"]) == 10
+        assert len(p2["items"]) == 10
+        assert len(p3["items"]) == 5
+        assert p1["has_more"] is True
+        assert p2["has_more"] is True
+        assert p3["has_more"] is False
+
+        p1_ids = {r["id"] for r in p1["items"]}
+        p2_ids = {r["id"] for r in p2["items"]}
+        p3_ids = {r["id"] for r in p3["items"]}
+
+        # All pages are mutually exclusive and total 25
+        assert p1_ids.isdisjoint(p2_ids)
+        assert p2_ids.isdisjoint(p3_ids)
+        assert p1_ids.isdisjoint(p3_ids)
+        assert len(p1_ids | p2_ids | p3_ids) == 25
+
+        # 5. Global endpoint /test-runs query count check
+        global_queries = []
+        handler_global = capture_query(global_queries)
+        event.listen(engine, "before_cursor_execute", handler_global)
+        resp_global = client.get("/test-runs?limit=15&paginated=true", headers=headers)
+        event.remove(engine, "before_cursor_execute", handler_global)
+
+        assert resp_global.status_code == 200
+        assert len(resp_global.json()["items"]) == 15
+        # User auth query + count query + paged query = 3 queries
+        assert len(global_queries) <= 4
+
+    finally:
+        db_session.query(TestRun).filter(TestRun.id.in_(seeded_ids)).delete(synchronize_session=False)
+        db_session.query(TestCase).filter(TestCase.id == perf_tc.id).delete(synchronize_session=False)
+        db_session.commit()
+
+
+
 
