@@ -32,7 +32,7 @@ def full_lineage_context(db_session):
     token = create_access_token(str(user.id))
     headers = {"Authorization": f"Bearer {token}"}
 
-    # Find a test run that belongs to this user through the full chain
+    # Find a test run that belongs to this user through the full chain (ordered latest first to match default endpoint sort)
     test_run = (
         db_session.query(TestRun)
         .join(TestCase, TestRun.test_case_id == TestCase.id)
@@ -40,6 +40,7 @@ def full_lineage_context(db_session):
         .join(AgentVersion, Evaluation.agent_version_id == AgentVersion.id)
         .join(Agent, AgentVersion.agent_id == Agent.id)
         .filter(Agent.owner_id == user.id)
+        .order_by(TestRun.created_at.desc(), TestRun.id.desc())
         .first()
     )
     assert test_run is not None, "User must have an active TestRun in the chain"

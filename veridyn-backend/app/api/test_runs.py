@@ -60,12 +60,20 @@ def get_owned_test_case(
     "",
     response_model=TestRunResponse,
     status_code=status.HTTP_201_CREATED,
+    summary="Create and Execute Test Run",
+    description="Trigger execution of a test case, capture agent response and latency, and generate evaluation results.",
 )
 def create_test_run(
     test_case_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    """
+    Execute a test run against the agent specified in the test case.
+
+    Creates the run record, executes the agent, records execution timestamps
+    and latency, and evaluates the run against configured metrics.
+    """
     test_case = get_owned_test_case(
         test_case_id,
         current_user,
@@ -106,19 +114,30 @@ def apply_test_run_sorting(query, sort_by: str, order: str):
 @router.get(
     "",
     response_model=PaginatedTestRunResponse | list[TestRunResponse],
+    summary="List Test Runs for a Test Case",
+    description="Retrieve test runs belonging to a specific testcase with optional filtering, sorting, and pagination.",
 )
 def list_test_runs(
     test_case_id: uuid.UUID,
     skip: int = Query(0, ge=0, description="Number of records to skip"),
-    limit: int = Query(50, ge=1, le=100, description="Maximum number of records to return"),
-    status: str | None = Query(None, description="Optional status filter"),
-    sort_by: str = Query("created_at", description="Field to sort by"),
-    order: str = Query("desc", description="Sort direction (asc or desc)"),
-    paginated: bool = Query(False, description="Return wrapped pagination envelope"),
+    limit: int = Query(50, ge=1, le=100, description="Maximum number of records to return (1-100)"),
+    status: str | None = Query(None, description="Optional status filter ('pending', 'running', 'completed', 'failed')"),
+    sort_by: str = Query("created_at", description="Field to sort by ('created_at', 'started_at', 'completed_at', 'latency_ms', 'status')"),
+    order: str = Query("desc", description="Sort direction ('asc' or 'desc')"),
+    paginated: bool = Query(False, description="Return wrapped pagination envelope with metadata"),
     response: Response = None,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    """
+    List test runs for the specified test case.
+
+    Supports:
+    - Pagination via `skip` and `limit` (max 100).
+    - Status filtering: `pending`, `running`, `completed`, `failed`.
+    - Sorting by `created_at`, `started_at`, `completed_at`, `latency_ms`, or `status`.
+    - Wrapped pagination envelope when `paginated=true`.
+    """
     test_case = get_owned_test_case(
         test_case_id,
         current_user,
@@ -180,18 +199,29 @@ detail_router = APIRouter(
 @detail_router.get(
     "",
     response_model=PaginatedTestRunResponse | list[TestRunResponse],
+    summary="List User Test Runs",
+    description="Retrieve all test runs owned by the authenticated user across evaluations with optional filtering, sorting, and pagination.",
 )
 def list_user_test_runs(
     skip: int = Query(0, ge=0, description="Number of records to skip"),
-    limit: int = Query(50, ge=1, le=100, description="Maximum number of records to return"),
-    status: str | None = Query(None, description="Optional status filter"),
-    sort_by: str = Query("created_at", description="Field to sort by"),
-    order: str = Query("desc", description="Sort direction (asc or desc)"),
-    paginated: bool = Query(False, description="Return wrapped pagination envelope"),
+    limit: int = Query(50, ge=1, le=100, description="Maximum number of records to return (1-100)"),
+    status: str | None = Query(None, description="Optional status filter ('pending', 'running', 'completed', 'failed')"),
+    sort_by: str = Query("created_at", description="Field to sort by ('created_at', 'started_at', 'completed_at', 'latency_ms', 'status')"),
+    order: str = Query("desc", description="Sort direction ('asc' or 'desc')"),
+    paginated: bool = Query(False, description="Return wrapped pagination envelope with metadata"),
     response: Response = None,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    """
+    List all test runs belonging to the authenticated user.
+
+    Supports:
+    - Pagination via `skip` and `limit` (max 100).
+    - Status filtering: `pending`, `running`, `completed`, `failed`.
+    - Sorting by `created_at`, `started_at`, `completed_at`, `latency_ms`, or `status`.
+    - Wrapped pagination envelope when `paginated=true`.
+    """
     if sort_by not in ALLOWED_SORT_FIELDS:
         raise HTTPException(
             status_code=422,
@@ -287,12 +317,19 @@ def get_owned_test_run(
 @detail_router.get(
     "/{test_run_id}",
     response_model=TestRunResponse,
+    summary="Get Test Run Details",
+    description="Retrieve details and execution metadata of a single test run by ID.",
 )
 def get_test_run(
     test_run_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    """
+    Retrieve details of a single test run by ID.
+
+    Includes execution status, latency, timestamps, and executor metadata.
+    """
     return get_owned_test_run(
         test_run_id,
         current_user,

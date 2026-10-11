@@ -1,20 +1,20 @@
 from datetime import datetime
 import uuid
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class TestRunResponse(BaseModel):
-    id: uuid.UUID
-    test_case_id: uuid.UUID
-    status: str
-    actual_output: str | None = None
-    result: str | None = None
-    error_message: str | None = None
-    latency_ms: int | None = None
-    started_at: datetime | None = None
-    completed_at: datetime | None = None
-    executor_type: str | None = None
+    id: uuid.UUID = Field(..., description="Unique identifier of the test run")
+    test_case_id: uuid.UUID = Field(..., description="ID of the parent test case")
+    status: str = Field(..., description="Execution status: pending, running, completed, or failed")
+    actual_output: str | None = Field(None, description="Output payload returned by the agent")
+    result: str | None = Field(None, description="Evaluation result status summary")
+    error_message: str | None = Field(None, description="Error message if execution failed")
+    latency_ms: int | None = Field(None, description="Total execution round-trip latency in milliseconds")
+    started_at: datetime | None = Field(None, description="UTC timestamp when agent execution started")
+    completed_at: datetime | None = Field(None, description="UTC timestamp when agent execution completed")
+    executor_type: str | None = Field(None, description="Agent executor class name (e.g. HTTPAgentExecutor)")
 
     model_config = {
         "from_attributes": True
@@ -22,8 +22,8 @@ class TestRunResponse(BaseModel):
 
 
 class PaginatedTestRunResponse(BaseModel):
-    items: list[TestRunResponse]
-    total: int
-    skip: int
-    limit: int
-    has_more: bool
+    items: list[TestRunResponse] = Field(..., description="List of test runs for the current page")
+    total: int = Field(..., description="Total number of test runs matching the filter criteria")
+    skip: int = Field(..., description="Number of skipped records")
+    limit: int = Field(..., description="Maximum page size requested")
+    has_more: bool = Field(..., description="Whether additional records exist beyond the current page")
