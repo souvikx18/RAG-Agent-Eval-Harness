@@ -588,5 +588,83 @@ def test_list_test_runs_sorting_and_ordering(client, authenticated_context, db_s
         db_session.commit()
 
 
+def test_test_run_api_input_validation(client, authenticated_context):
+    """
+    Step 172: Dedicated input validation tests for TestRun endpoints:
+    - Negative pagination values (skip < 0, limit < 1)
+    - Excessive limits (limit > 100)
+    - Non-integer pagination inputs
+    - Invalid sorting parameters (unsupported sort_by field, unsupported order direction)
+    - Unsupported status filters
+    - Valid combinations of query parameters (skip, limit, status, sort_by, order, paginated)
+    - Validations on both /test-cases/{id}/runs and /test-runs
+    """
+    test_case_id = authenticated_context["own_test_case_id"]
+    headers = authenticated_context["headers"]
+
+    endpoints = [
+        f"/test-cases/{test_case_id}/runs",
+        "/test-runs",
+    ]
+
+    for base_url in endpoints:
+        # 1. Negative skip
+        resp = client.get(f"{base_url}?skip=-5", headers=headers)
+        assert resp.status_code == 422
+
+        # 2. Limit less than 1 (zero or negative)
+        resp = client.get(f"{base_url}?limit=0", headers=headers)
+        assert resp.status_code == 422
+
+        resp = client.get(f"{base_url}?limit=-10", headers=headers)
+        assert resp.status_code == 422
+
+        # 3. Excessive limits (limit > 100)
+        resp = client.get(f"{base_url}?limit=101", headers=headers)
+        assert resp.status_code == 422
+
+        resp = client.get(f"{base_url}?limit=500", headers=headers)
+        assert resp.status_code == 422
+
+        # 4. Non-integer pagination inputs
+        resp = client.get(f"{base_url}?skip=abc", headers=headers)
+        assert resp.status_code == 422
+
+        resp = client.get(f"{base_url}?limit=xyz", headers=headers)
+        assert resp.status_code == 422
+
+        # 5. Invalid sorting parameters
+        resp = client.get(f"{base_url}?sort_by=drop_table", headers=headers)
+        assert resp.status_code == 422
+        assert "Invalid sort_by" in resp.json().get("detail", "")
+
+        resp = client.get(f"{base_url}?order=random", headers=headers)
+        assert resp.status_code == 422
+        assert "Invalid order" in resp.json().get("detail", "")
+
+        # 6. Unsupported status filters
+        resp = client.get(f"{base_url}?status=in_progress", headers=headers)
+        assert resp.status_code == 422
+        assert "Invalid status" in resp.json().get("detail", "")
+
+        resp = client.get(f"{base_url}?status=UNKNOWN", headers=headers)
+        assert resp.status_code == 422
+
+        # 7. Valid combinations of query parameters
+        valid_params = [
+            "?skip=0&limit=10",
+            "?skip=5&limit=25&status=completed",
+            "?skip=0&limit=50&status=failed&sort_by=latency_ms&order=asc",
+            "?skip=10&limit=100&status=pending&sort_by=created_at&order=desc&paginated=true",
+            "?sort_by=started_at&order=asc",
+            "?sort_by=completed_at&order=desc",
+            "?sort_by=status&order=asc",
+        ]
+        for query_str in valid_params:
+            resp = client.get(f"{base_url}{query_str}", headers=headers)
+            assert resp.status_code == 200, f"Expected 200 for {base_url}{query_str}, got {resp.status_code}"
+
+
+
 
 
