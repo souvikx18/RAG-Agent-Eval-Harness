@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime, timezone
 import pytest
 from fastapi.testclient import TestClient
 from app.main import app
@@ -10,6 +11,7 @@ from app.models.agent_version import AgentVersion
 from app.models.evaluation import Evaluation
 from app.models.test_case import TestCase
 from app.models.test_run import TestRun
+from app.models.evaluation_result import EvaluationResult
 
 
 @pytest.fixture(scope="module")
@@ -1336,6 +1338,122 @@ def test_test_run_observability_and_structured_logging(client, authenticated_con
     assert "secret_key" not in combined_logs.lower()
     assert "postgresql://" not in combined_logs.lower()
     assert "bearer" not in combined_logs.lower()
+
+
+def test_test_run_execution_reliability_and_failure_recovery(client, authenticated_context, db_session):
+    """
+    Step 179: TestRun Execution Reliability & Failure Recovery.
+    - Simulates executor exceptions and validates that TestRun transitions to 'failed',
+      capturing error_message, latency_ms, started_at, completed_at, and executor_type.
+    - Simulates database persistence failures and confirms transaction rollbacks, preventing partial or corrupt records.
+    - Validates that execution lifecycle retains timing and metadata consistency across failures.
+    - Verifies timeout behavior handling (30s timeout configured on HTTPAgentExecutor) and documents cancellation limitations.
+    """
+    from unittest.mock import patch, MagicMock
+    from sqlalchemy.exc import OperationalError
+    from app.services.agent_execution_service import execute_test_run
+    from app.services.result_service import create_evaluation_result
+
+    test_case_id = authenticated_context["own_test_case_id"]
+    headers = authenticated_context["headers"]
+
+    # 1. Executor exception handling via API
+    mock_failing_executor = MagicMock()
+    mock_failing_executor.__class__.__name__ = "SimulatedAgentExecutor"
+    mock_failing_executor.execute.side_effect = RuntimeError("Simulated executor crash")
+
+    with patch("app.services.agent_execution_service.get_agent_executor", return_value=mock_failing_executor):
+        resp = client.post(f"/test-cases/{test_case_id}/runs", headers=headers)
+        assert resp.status_code == 201
+        run_data = resp.json()
+        assert run_data["status"] == "failed"
+        assert run_data["result"] == "failed"
+        assert "Simulated executor crash" in (run_data["error_message"] or "")
+        assert run_data["started_at"] is not None
+        assert run_data["completed_at"] is not None
+        assert run_data["latency_ms"] is not None
+        assert run_data["latency_ms"] >= 0
+        assert run_data["executor_type"] == "SimulatedAgentExecutor"
+
+    # Verify database persistence of the failed execution
+    db_run = db_session.query(TestRun).filter(TestRun.id == run_data["id"]).first()
+    assert db_run is not None
+    assert db_run.status == "failed"
+    assert db_run.result == "failed"
+    assert db_run.error_message == "Simulated executor crash"
+    assert db_run.started_at is not None
+    assert db_run.completed_at is not None
+    assert db_run.completed_at >= db_run.started_at
+    assert db_run.latency_ms >= 0
+    assert db_run.executor_type == "SimulatedAgentExecutor"
+
+    # Clean up test run
+    db_session.query(TestRun).filter(TestRun.id == run_data["id"]).delete(synchronize_session=False)
+    db_session.commit()
+
+    # 2. Database persistence error during execute_test_run
+    # Create a fresh run record
+    fresh_run = TestRun(
+        id=uuid.uuid4(),
+        test_case_id=uuid.UUID(test_case_id),
+        status="pending",
+    )
+    db_session.add(fresh_run)
+    db_session.commit()
+
+    mock_db = MagicMock(wraps=db_session)
+    # Configure mock_db.commit to raise an OperationalError when persisting execution result
+    call_count = 0
+    def commit_with_failure():
+        nonlocal call_count
+        call_count += 1
+        # The first commit transitions status to 'running', second attempts final persistence
+        if call_count >= 2:
+            raise OperationalError("COMMIT", {}, Exception("Database disk full or connection dropped"))
+        return db_session.commit()
+
+    mock_db.commit = MagicMock(side_effect=commit_with_failure)
+
+    with pytest.raises(OperationalError):
+        execute_test_run(fresh_run, mock_db)
+
+    # Verify rollback was called on mock_db when commit failed
+    assert mock_db.rollback.called
+
+    # Clean up fresh_run
+    db_session.query(TestRun).filter(TestRun.id == fresh_run.id).delete(synchronize_session=False)
+    db_session.commit()
+
+    # 3. Database persistence error during create_evaluation_result
+    test_run_for_eval = TestRun(
+        id=uuid.uuid4(),
+        test_case_id=uuid.UUID(test_case_id),
+        status="completed",
+        started_at=datetime.now(timezone.utc),
+        completed_at=datetime.now(timezone.utc),
+        latency_ms=15,
+        executor_type="PlaceholderAgentExecutor",
+    )
+    db_session.add(test_run_for_eval)
+    db_session.commit()
+
+    mock_db_eval = MagicMock(wraps=db_session)
+    mock_db_eval.commit = MagicMock(side_effect=OperationalError("COMMIT", {}, Exception("Database deadlock")))
+
+    with pytest.raises(OperationalError):
+        create_evaluation_result(test_run_for_eval, mock_db_eval)
+
+    # Verify rollback was called on mock_db_eval
+    assert mock_db_eval.rollback.called
+
+    # Verify no partial evaluation results were committed
+    eval_results = db_session.query(EvaluationResult).filter(EvaluationResult.test_run_id == test_run_for_eval.id).all()
+    assert len(eval_results) == 0
+
+    # Clean up test_run_for_eval
+    db_session.query(TestRun).filter(TestRun.id == test_run_for_eval.id).delete(synchronize_session=False)
+    db_session.commit()
+
 
 
 

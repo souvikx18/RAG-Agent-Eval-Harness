@@ -120,6 +120,8 @@ def execute_test_run(
 
     except Exception as exc:
         test_run.status = "failed"
+        test_run.result = "failed"
+        test_run.actual_output = None
         test_run.error_message = str(exc)
         test_run.completed_at = datetime.now(timezone.utc)
         if test_run.started_at is None:
@@ -141,7 +143,16 @@ def execute_test_run(
             test_run.error_message,
         )
 
-    db.commit()
-    db.refresh(test_run)
+    try:
+        db.commit()
+        db.refresh(test_run)
+    except Exception as db_exc:
+        db.rollback()
+        logger.critical(
+            "Database commit failed during TestRun execution persistence: test_run_id=%s error=%s",
+            test_run.id,
+            str(db_exc),
+        )
+        raise
 
     return test_run

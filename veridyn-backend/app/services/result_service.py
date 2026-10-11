@@ -101,7 +101,11 @@ def create_evaluation_result(
             )
 
     db.add_all(results)
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
 
     for result in results:
         db.refresh(result)
