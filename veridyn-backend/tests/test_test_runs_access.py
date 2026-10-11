@@ -665,6 +665,198 @@ def test_test_run_api_input_validation(client, authenticated_context):
             assert resp.status_code == 200, f"Expected 200 for {base_url}{query_str}, got {resp.status_code}"
 
 
+def test_test_run_api_combined_query_integration(client, authenticated_context, db_session):
+    """
+    Step 173: Add TestRun API Integration Tests.
+    Verifies that filtering, sorting, pagination, and pagination metadata work
+    correctly together through both /test-cases/{id}/runs and /test-runs:
+    - Status filtering combined with pagination
+    - Sorting combined with pagination
+    - Filtering, sorting, and pagination used together
+    - `total` reflects the filtered dataset before pagination
+    - `has_more` correctly reflects whether additional matching records exist
+    - Consecutive pages contain no duplicate records when the dataset remains unchanged
+    - Empty filtered results return the expected response format (empty items, total=0, has_more=false)
+    - Existing TestRun fields (execution metadata, id, status, latency_ms, etc.) remain intact
+    - Tenant isolation / authorization rules remain enforced
+    """
+    from datetime import datetime, timezone, timedelta
+    headers = authenticated_context["headers"]
+    user = authenticated_context["user"]
 
+    # Retrieve existing evaluation owned by the user to attach a clean dedicated TestCase
+    existing_tc = db_session.query(TestCase).filter(TestCase.id == uuid.UUID(authenticated_context["own_test_case_id"])).first()
+    evaluation_id = existing_tc.evaluation_id
 
+    # Create a clean dedicated test case so that counts are 100% deterministic and isolated
+    dedicated_tc = TestCase(
+        id=uuid.uuid4(),
+        evaluation_id=evaluation_id,
+        name="Combined Query Integration TestCase",
+        category="integration",
+        description="TestCase specifically for testing combined query parameters in isolation",
+        input_data='{"prompt": "integration test"}',
+        expected_behavior="deterministic pagination and filtering",
+    )
+    db_session.add(dedicated_tc)
+    db_session.commit()
+
+    test_case_id = str(dedicated_tc.id)
+
+    base_time = datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+    seeded_ids = []
+
+    # Seed 7 test runs specifically for this test case:
+    # 4 'completed' (latencies: 100, 200, 300, 400; timestamps incremented)
+    # 3 'failed' (latencies: 50, 150, 250; timestamps incremented)
+    test_runs_data = [
+        {"status": "completed", "latency": 100, "offset": 1},
+        {"status": "completed", "latency": 200, "offset": 2},
+        {"status": "completed", "latency": 300, "offset": 3},
+        {"status": "completed", "latency": 400, "offset": 4},
+        {"status": "failed", "latency": 50, "offset": 5},
+        {"status": "failed", "latency": 150, "offset": 6},
+        {"status": "failed", "latency": 250, "offset": 7},
+    ]
+
+    for d in test_runs_data:
+        t = base_time + timedelta(minutes=d["offset"])
+        run = TestRun(
+            id=uuid.uuid4(),
+            test_case_id=dedicated_tc.id,
+            status=d["status"],
+            actual_output=f"Integration run {d['status']} {d['latency']}",
+            latency_ms=d["latency"],
+            started_at=t,
+            completed_at=t + timedelta(milliseconds=d["latency"]),
+            created_at=t,
+            executor_type="HTTPAgentExecutor",
+        )
+        db_session.add(run)
+        seeded_ids.append(run.id)
+    db_session.commit()
+
+    try:
+        url = f"/test-cases/{test_case_id}/runs"
+
+        # 1. Status filtering combined with pagination & pagination metadata
+        # Filter for 'completed' (total 4), page size 2, skip 0
+        resp_p1 = client.get(f"{url}?status=completed&skip=0&limit=2&paginated=true", headers=headers)
+        assert resp_p1.status_code == 200
+        p1_data = resp_p1.json()
+        assert p1_data["total"] == 4
+        assert p1_data["skip"] == 0
+        assert p1_data["limit"] == 2
+        assert p1_data["has_more"] is True
+        assert len(p1_data["items"]) == 2
+        assert all(item["status"] == "completed" for item in p1_data["items"])
+
+        # Page 2: skip=2, limit=2
+        resp_p2 = client.get(f"{url}?status=completed&skip=2&limit=2&paginated=true", headers=headers)
+        assert resp_p2.status_code == 200
+        p2_data = resp_p2.json()
+        assert p2_data["total"] == 4
+        assert p2_data["skip"] == 2
+        assert p2_data["limit"] == 2
+        assert p2_data["has_more"] is False
+        assert len(p2_data["items"]) == 2
+        assert all(item["status"] == "completed" for item in p2_data["items"])
+
+        # Consecutive pages contain no duplicate records
+        p1_item_ids = {r["id"] for r in p1_data["items"]}
+        p2_item_ids = {r["id"] for r in p2_data["items"]}
+        assert p1_item_ids.isdisjoint(p2_item_ids)
+        assert len(p1_item_ids | p2_item_ids) == 4
+
+        # 2. Filtering, sorting, and pagination combined together
+        # Filter 'completed', sort by latency_ms descending, limit 2
+        resp_sort_desc = client.get(
+            f"{url}?status=completed&sort_by=latency_ms&order=desc&skip=0&limit=2&paginated=true",
+            headers=headers,
+        )
+        assert resp_sort_desc.status_code == 200
+        desc_data = resp_sort_desc.json()
+        assert desc_data["total"] == 4
+        assert desc_data["has_more"] is True
+        assert desc_data["items"][0]["latency_ms"] == 400
+        assert desc_data["items"][1]["latency_ms"] == 300
+
+        # Next page of filtered descending sort
+        resp_sort_desc_p2 = client.get(
+            f"{url}?status=completed&sort_by=latency_ms&order=desc&skip=2&limit=2&paginated=true",
+            headers=headers,
+        )
+        assert resp_sort_desc_p2.status_code == 200
+        desc_data_p2 = resp_sort_desc_p2.json()
+        assert desc_data_p2["total"] == 4
+        assert desc_data_p2["has_more"] is False
+        assert desc_data_p2["items"][0]["latency_ms"] == 200
+        assert desc_data_p2["items"][1]["latency_ms"] == 100
+
+        # 3. Filter 'failed', sort by latency_ms ascending, paginated
+        resp_failed = client.get(
+            f"{url}?status=failed&sort_by=latency_ms&order=asc&skip=0&limit=2&paginated=true",
+            headers=headers,
+        )
+        assert resp_failed.status_code == 200
+        failed_data = resp_failed.json()
+        assert failed_data["total"] == 3
+        assert failed_data["has_more"] is True
+        assert len(failed_data["items"]) == 2
+        assert failed_data["items"][0]["latency_ms"] == 50
+        assert failed_data["items"][1]["latency_ms"] == 150
+
+        # 4. Empty filtered results return valid response structure
+        resp_empty_paginated = client.get(
+            f"{url}?status=running&skip=0&limit=10&paginated=true",
+            headers=headers,
+        )
+        assert resp_empty_paginated.status_code == 200
+        empty_meta = resp_empty_paginated.json()
+        assert empty_meta["total"] == 0
+        assert empty_meta["skip"] == 0
+        assert empty_meta["limit"] == 10
+        assert empty_meta["has_more"] is False
+        assert empty_meta["items"] == []
+
+        # Empty filtered results in unpaginated/legacy mode
+        resp_empty_unpaginated = client.get(f"{url}?status=running", headers=headers)
+        assert resp_empty_unpaginated.status_code == 200
+        assert resp_empty_unpaginated.json() == []
+
+        # 5. Metadata integrity: verify all contract fields on items
+        first_item = p1_data["items"][0]
+        assert "id" in first_item
+        assert "test_case_id" in first_item
+        assert "status" in first_item
+        assert "latency_ms" in first_item
+        assert "executor_type" in first_item
+        assert first_item["executor_type"] == "HTTPAgentExecutor"
+        assert "started_at" in first_item
+        assert first_item["started_at"] is not None
+        assert "completed_at" in first_item
+        assert first_item["completed_at"] is not None
+
+        # 6. Global /test-runs endpoint with combined query
+        resp_global = client.get(
+            f"/test-runs?status=completed&sort_by=latency_ms&order=desc&skip=0&limit=3&paginated=true",
+            headers=headers,
+        )
+        assert resp_global.status_code == 200
+        global_data = resp_global.json()
+        assert global_data["total"] >= 4
+        assert len(global_data["items"]) == 3
+        assert all(it["status"] == "completed" for it in global_data["items"])
+        lat_seq = [it["latency_ms"] for it in global_data["items"] if it["latency_ms"] is not None]
+        assert lat_seq == sorted(lat_seq, reverse=True)
+
+        # 7. Authorization & tenant isolation preserved
+        other_headers = authenticated_context.get("other_headers")
+        if other_headers:
+            resp_forbidden = client.get(url, headers=other_headers)
+            assert resp_forbidden.status_code in (403, 404)
+    finally:
+        db_session.query(TestRun).filter(TestRun.id.in_(seeded_ids)).delete(synchronize_session=False)
+        db_session.query(TestCase).filter(TestCase.id == dedicated_tc.id).delete(synchronize_session=False)
+        db_session.commit()
 
