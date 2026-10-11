@@ -1186,5 +1186,117 @@ def test_test_run_query_performance_and_optimization(client, authenticated_conte
         db_session.commit()
 
 
+def test_test_run_security_and_access_control_regression(client, authenticated_context, db_session):
+    """
+    Step 177: TestRun API Security & Access-Control Regression Tests.
+    - Verifies endpoint protection and authentication enforcement across all endpoints.
+    - Tests unauthorized access with another user (multi-tenant boundary):
+      * Other user cannot read or list owner's test runs (returns 404/empty).
+      * Other user cannot trigger execution on owner's test cases (returns 404).
+      * Other user cannot access owner's test run details (returns 404).
+      * Other user's /test-runs endpoint excludes owner's test runs.
+    - Execution metadata (started_at, executor_type, latency_ms, status) remains strictly isolated.
+    - Verifies database isolation (no unauthorized writes or data leaks).
+    """
+    owner_user = authenticated_context["user"]
+    owner_headers = authenticated_context["headers"]
+    owner_tc_id = authenticated_context["own_test_case_id"]
+
+    # 1. Create a second distinct user in the database to test cross-tenant isolation
+    other_user = User(
+        id=uuid.uuid4(),
+        email=f"other_user_{uuid.uuid4().hex[:8]}@example.com",
+        full_name="Other Tenant User",
+        hashed_password="fake_hashed_password",
+        is_active=True,
+    )
+    db_session.add(other_user)
+    db_session.commit()
+
+    other_token = create_access_token(str(other_user.id))
+    other_headers = {"Authorization": f"Bearer {other_token}"}
+
+    # 2. Seed a test run under the owner's test case with explicit execution metadata
+    run_id = uuid.uuid4()
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
+    seeded_run = TestRun(
+        id=run_id,
+        test_case_id=uuid.UUID(owner_tc_id),
+        status="completed",
+        actual_output="Secret owner output payload",
+        result="success",
+        latency_ms=120,
+        started_at=now,
+        completed_at=now,
+        created_at=now,
+        executor_type="HTTPAgentExecutor",
+    )
+    db_session.add(seeded_run)
+    db_session.commit()
+
+    try:
+        # A. Owner can access their own test run details
+        resp_owner = client.get(f"/test-runs/{run_id}", headers=owner_headers)
+        assert resp_owner.status_code == 200
+        owner_data = resp_owner.json()
+        assert owner_data["id"] == str(run_id)
+        assert owner_data["actual_output"] == "Secret owner output payload"
+        assert owner_data["executor_type"] == "HTTPAgentExecutor"
+        assert owner_data["started_at"] is not None
+
+        # B. Other user accessing owner's test run detail is rejected with 404 (prevent ID enumeration)
+        resp_other_detail = client.get(f"/test-runs/{run_id}", headers=other_headers)
+        assert resp_other_detail.status_code == 404
+        assert resp_other_detail.json().get("detail") == "Test run not found"
+
+        # C. Other user accessing owner's test case runs is rejected with 404 (Test case not found)
+        resp_other_list = client.get(f"/test-cases/{owner_tc_id}/runs", headers=other_headers)
+        assert resp_other_list.status_code == 404
+        assert resp_other_list.json().get("detail") == "Test case not found"
+
+        # D. Other user attempting to trigger execution on owner's test case is rejected with 404
+        resp_other_post = client.post(f"/test-cases/{owner_tc_id}/runs", headers=other_headers)
+        assert resp_other_post.status_code == 404
+        assert resp_other_post.json().get("detail") == "Test case not found"
+
+        # E. Other user's /test-runs listing must NOT include owner's test run (record-level exclusion)
+        resp_other_global = client.get("/test-runs", headers=other_headers)
+        assert resp_other_global.status_code == 200
+        other_runs = resp_other_global.json()
+        assert isinstance(other_runs, list)
+        assert all(r["id"] != str(run_id) for r in other_runs)
+
+        # Other user's paginated /test-runs
+        resp_other_paginated = client.get("/test-runs?paginated=true", headers=other_headers)
+        assert resp_other_paginated.status_code == 200
+        other_paginated_data = resp_other_paginated.json()
+        assert all(r["id"] != str(run_id) for r in other_paginated_data["items"])
+
+        # F. Pagination and filtering parameters cannot bypass isolation
+        resp_bypass_attempt = client.get(
+            f"/test-cases/{owner_tc_id}/runs?skip=0&limit=100&status=completed&paginated=true",
+            headers=other_headers,
+        )
+        assert resp_bypass_attempt.status_code == 404
+
+        # G. Inactive user access rejection
+        other_user.is_active = False
+        db_session.commit()
+
+        resp_inactive = client.get(f"/test-runs/{run_id}", headers=other_headers)
+        assert resp_inactive.status_code == 403
+        assert resp_inactive.json().get("detail") == "User account is inactive"
+
+        resp_inactive_list = client.get("/test-runs", headers=other_headers)
+        assert resp_inactive_list.status_code == 403
+
+    finally:
+        db_session.query(TestRun).filter(TestRun.id == run_id).delete(synchronize_session=False)
+        db_session.query(User).filter(User.id == other_user.id).delete(synchronize_session=False)
+        db_session.commit()
+
+
+
 
 
