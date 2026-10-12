@@ -68,7 +68,8 @@ class CorrectnessMetric(Metric):
                 explanation="Actual output and expected behavior must be strings.",
             )
 
-        if not context.actual_output.strip():
+        actual = context.actual_output.strip()
+        if not actual:
             return MetricResult(
                 metric_name=self.name,
                 score=0.0,
@@ -92,16 +93,14 @@ class CorrectnessMetric(Metric):
                 explanation="Actual output and expected behavior must be strings.",
             )
 
-        if not context.expected_behavior.strip():
+        expected = context.expected_behavior.strip()
+        if not expected:
             return MetricResult(
                 metric_name=self.name,
                 score=1.0,
                 status="passed",
                 explanation="No expected behavior was provided.",
             )
-
-        expected = context.expected_behavior.strip()
-        actual = context.actual_output.strip()
 
         if not self.case_sensitive:
             expected = expected.lower()

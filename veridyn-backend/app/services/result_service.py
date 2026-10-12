@@ -49,13 +49,17 @@ def create_evaluation_result(
             detail="Test run has not finished",
         )
 
-    test_case = (
-        db.query(TestCase)
-        .filter(
-            TestCase.id == test_run.test_case_id
-        )
-        .first()
-    )
+    test_case = getattr(test_run, "test_case", None)
+    if test_case is None and test_run.test_case_id:
+        test_case = db.get(TestCase, test_run.test_case_id)
+        if not test_case:
+            test_case = (
+                db.query(TestCase)
+                .filter(
+                    TestCase.id == test_run.test_case_id
+                )
+                .first()
+            )
 
     if not test_case:
         raise HTTPException(
