@@ -673,6 +673,152 @@ def test_metric_evaluation_service_end_to_end_pipeline(db):
         metric_registry.reset()
 
 
+def test_evaluation_result_integrity_and_multi_run_snapshot_consistency(db):
+    """
+    Step 184: Metric Evaluation Result Integrity & Snapshot Consistency.
+    - Tests evaluation results integrity across multiple distinct TestRuns.
+    - Evaluates multiple metrics under initial configuration (version 1), persists results.
+    - Modifies the live metric registry configuration (version 2), executes a second TestRun, and persists results.
+    - Confirms both TestRuns maintain independent and consistent snapshots without overwriting each other:
+      * First TestRun retains configuration_version=1 with initial config.
+      * Second TestRun retains configuration_version=2 with updated config.
+    - Validates model validator integrity constraints:
+      * Rejecting None or <1 configuration_version.
+      * Rejecting non-dict configuration objects.
+    - Validates that database retrieval matches service outputs accurately.
+    """
+    from app.models.evaluation_result import ConfigurationValidationError
+
+    metric_registry.reset()
+
+    try:
+        # 1. Base test case
+        test_case = TestCase(
+            id=uuid.uuid4(),
+            evaluation_id=uuid.uuid4(),
+            name="Snapshot Integrity TC",
+            category="functional",
+            input_data="Echo test",
+            expected_behavior="Echo test response",
+            is_adversarial=False,
+        )
+        db.add(test_case)
+        db.commit()
+
+        # Run 1: Executed under default configuration (v1)
+        run_1 = TestRun(
+            id=uuid.uuid4(),
+            test_case_id=test_case.id,
+            status="completed",
+            actual_output="Echo test response",
+            latency_ms=400,
+            result="passed",
+            executor_type="PlaceholderAgentExecutor",
+        )
+        db.add(run_1)
+        db.commit()
+
+        results_1 = create_evaluation_result(run_1, db)
+        assert len(results_1) == 2
+        res1_by_metric = {r.metric_name: r for r in results_1}
+
+        assert res1_by_metric["correctness"].configuration_version == 1
+        assert res1_by_metric["correctness"].configuration == {"case_sensitive": False}
+        assert res1_by_metric["latency"].configuration_version == 1
+        assert res1_by_metric["latency"].configuration["fast_threshold_ms"] == 500
+
+        # 2. Reconfigure metrics in registry (version 2 for correctness, version 2 for latency)
+        metric_registry.configure("correctness", {"case_sensitive": True})
+        metric_registry.configure("latency", {"fast_threshold_ms": 200, "acceptable_threshold_ms": 600, "high_threshold_ms": 1200})
+
+        # Run 2: Executed under updated configuration (v2)
+        run_2 = TestRun(
+            id=uuid.uuid4(),
+            test_case_id=test_case.id,
+            status="completed",
+            actual_output="Echo test response",
+            latency_ms=400,
+            result="passed",
+            executor_type="PlaceholderAgentExecutor",
+        )
+        db.add(run_2)
+        db.commit()
+
+        results_2 = create_evaluation_result(run_2, db)
+        assert len(results_2) == 2
+        res2_by_metric = {r.metric_name: r for r in results_2}
+
+        assert res2_by_metric["correctness"].configuration_version == 2
+        assert res2_by_metric["correctness"].configuration == {"case_sensitive": True}
+        assert res2_by_metric["latency"].configuration_version == 2
+        assert res2_by_metric["latency"].configuration["fast_threshold_ms"] == 200
+
+        # 3. Verify cross-run isolation in database persistence
+        persisted_1 = db.query(EvaluationResult).filter(EvaluationResult.test_run_id == run_1.id).all()
+        p1_by_metric = {r.metric_name: r for r in persisted_1}
+        assert p1_by_metric["correctness"].configuration_version == 1
+        assert p1_by_metric["correctness"].configuration == {"case_sensitive": False}
+        assert p1_by_metric["latency"].configuration_version == 1
+        assert p1_by_metric["latency"].configuration["fast_threshold_ms"] == 500
+
+        persisted_2 = db.query(EvaluationResult).filter(EvaluationResult.test_run_id == run_2.id).all()
+        p2_by_metric = {r.metric_name: r for r in persisted_2}
+        assert p2_by_metric["correctness"].configuration_version == 2
+        assert p2_by_metric["correctness"].configuration == {"case_sensitive": True}
+        assert p2_by_metric["latency"].configuration_version == 2
+        assert p2_by_metric["latency"].configuration["fast_threshold_ms"] == 200
+
+        # 4. Model validation integrity checks
+        # Invalid configuration_version < 1
+        with pytest.raises(ValueError):
+            EvaluationResult(
+                test_run_id=run_1.id,
+                metric_name="correctness",
+                status="passed",
+                configuration_version=0,
+            )
+
+        # Invalid configuration_version None
+        with pytest.raises(ValueError):
+            EvaluationResult(
+                test_run_id=run_1.id,
+                metric_name="correctness",
+                status="passed",
+                configuration_version=None,
+            )
+
+        # Invalid configuration None or non-dict
+        with pytest.raises(ConfigurationValidationError):
+            EvaluationResult(
+                test_run_id=run_1.id,
+                metric_name="correctness",
+                status="passed",
+                configuration=None,
+            )
+
+        with pytest.raises(ConfigurationValidationError):
+            EvaluationResult(
+                test_run_id=run_1.id,
+                metric_name="correctness",
+                status="passed",
+                configuration=["list", "not", "dict"],
+            )
+
+        # Clean up created records
+        db.query(EvaluationResult).filter(
+            EvaluationResult.test_run_id.in_([run_1.id, run_2.id])
+        ).delete(synchronize_session=False)
+        db.query(TestRun).filter(
+            TestRun.id.in_([run_1.id, run_2.id])
+        ).delete(synchronize_session=False)
+        db.query(TestCase).filter(TestCase.id == test_case.id).delete(synchronize_session=False)
+        db.commit()
+
+    finally:
+        metric_registry.reset()
+
+
+
 
 
 
