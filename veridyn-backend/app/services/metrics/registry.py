@@ -1,8 +1,11 @@
+import logging
 from typing import Any
 
 from app.services.metrics.base_metric import Metric
 from app.services.metrics.correctness_metric import CorrectnessMetric
 from app.services.metrics.latency_metric import LatencyMetric
+
+logger = logging.getLogger("veridyn.metrics.registry")
 
 
 class MetricRegistry:
@@ -57,12 +60,29 @@ class MetricRegistry:
         config: dict[str, Any],
     ) -> None:
         if not isinstance(config, dict):
+            logger.warning(
+                "Metric configuration rejected: metric=%s error='Metric configuration must be a dictionary.'",
+                metric_name,
+            )
             raise TypeError(
                 "Metric configuration must be a dictionary."
             )
 
         metric = self.get(metric_name)
-        metric.configure(config)
+        try:
+            metric.configure(config)
+            logger.info(
+                "Metric configured successfully: metric=%s version=%d",
+                metric_name,
+                metric.get_configuration_version(),
+            )
+        except Exception as exc:
+            logger.warning(
+                "Metric configuration rejected: metric=%s error=%s",
+                metric_name,
+                str(exc),
+            )
+            raise
 
     def get_configurations(self) -> dict[str, dict[str, Any]]:
         return {

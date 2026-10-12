@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -5,6 +7,8 @@ from app.models.evaluation_result import EvaluationResult
 from app.models.test_run import TestRun
 from app.models.test_case import TestCase
 from app.services.metric_execution_service import execute_metrics
+
+logger = logging.getLogger("veridyn.evaluation_results")
 
 
 def create_evaluation_result(
@@ -16,6 +20,13 @@ def create_evaluation_result(
     if db is None:
         raise ValueError("db session cannot be None.")
 
+    test_run_id = getattr(test_run, "id", None)
+    logger.info(
+        "Evaluation results processing starting: test_run_id=%s status=%s",
+        test_run_id,
+        test_run.status,
+    )
+
     existing_results = (
         db.query(EvaluationResult)
         .filter(
@@ -25,6 +36,11 @@ def create_evaluation_result(
     )
 
     if existing_results:
+        logger.info(
+            "Evaluation results already exist: test_run_id=%s count=%d",
+            test_run_id,
+            len(existing_results),
+        )
         return existing_results
 
     if test_run.status not in ["completed", "failed"]:
@@ -107,8 +123,18 @@ def create_evaluation_result(
     db.add_all(results)
     try:
         db.commit()
-    except Exception:
+        logger.info(
+            "Evaluation results persisted successfully: test_run_id=%s result_count=%d",
+            test_run_id,
+            len(results),
+        )
+    except Exception as exc:
         db.rollback()
+        logger.error(
+            "Evaluation results database commit failed: test_run_id=%s error=%s",
+            test_run_id,
+            str(exc),
+        )
         raise
 
     for result in results:
