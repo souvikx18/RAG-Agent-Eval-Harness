@@ -1,11 +1,11 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 
-from app.core.config import settings
+from app.core.config import settings, ConfigurationError
 
 
 if not settings.DATABASE_URL:
-    raise ValueError("DATABASE_URL is not configured in .env")
+    raise ConfigurationError("DATABASE_URL is not configured in .env")
 
 
 engine = create_engine(

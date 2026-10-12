@@ -2,6 +2,8 @@ from fastapi import FastAPI, Depends
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from contextlib import asynccontextmanager
+
 from app.core.config import settings
 from app.core.database import get_db
 from app.api.auth import router as auth_router
@@ -17,11 +19,24 @@ from app.api.execution_traces import router as execution_traces_router
 from app.api.evaluation_results import router as evaluation_results_router
 from app.api.deployment_gates import router as deployment_gates_router
 
+
+def validate_configuration():
+    settings.validate()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    validate_configuration()
+    yield
+
+
 app = FastAPI(
     title=settings.APP_NAME,
     description="Proving AI Agents Are Ready for Production",
     version=settings.APP_VERSION,
+    lifespan=lifespan,
 )
+
 
 app.include_router(auth_router)
 app.include_router(agents_router)
