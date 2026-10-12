@@ -546,6 +546,134 @@ def test_metric_configuration_audit(db):
         metric_registry.reset()
 
 
+def test_metric_evaluation_service_end_to_end_pipeline(db):
+    """
+    Step 182: Metric Evaluation Service End-to-End Integration Tests.
+    - Validates the complete pipeline:
+      Registry -> MetricExecutionService -> Metric.evaluate() -> ResultService -> DB persistence.
+    - Tests successful metric evaluation with correct scoring and status calculation.
+    - Verifies association with the target TestRun ID and test case context.
+    - Tests evaluation failures (metric exception handling without falsely claiming success).
+    - Tests unknown metric rejection using the existing registry contract.
+    - Verifies snapshot immutability: live registry changes after evaluation do not mutate stored snapshots.
+    """
+    from unittest.mock import patch
+    from app.services.metrics.base_metric import Metric, MetricContext, MetricResult
+
+    metric_registry.reset()
+
+    try:
+        # 1. Setup entities in DB
+        test_case = TestCase(
+            id=uuid.uuid4(),
+            evaluation_id=uuid.uuid4(),
+            name="E2E Metric Test Case",
+            category="functional",
+            input_data="What is the capital of France?",
+            expected_behavior="Paris is the capital of France",
+            is_adversarial=False,
+        )
+        db.add(test_case)
+        db.commit()
+
+        test_run = TestRun(
+            id=uuid.uuid4(),
+            test_case_id=test_case.id,
+            status="completed",
+            actual_output="Paris is the capital of France.",
+            latency_ms=250,
+            result="passed",
+            executor_type="PlaceholderAgentExecutor",
+        )
+        db.add(test_run)
+        db.commit()
+
+        # 2. Pipeline Execution: execute_metrics -> create_evaluation_result
+        persisted_results = create_evaluation_result(test_run, db)
+        assert len(persisted_results) == 2
+
+        results_by_metric = {r.metric_name: r for r in persisted_results}
+        assert "correctness" in results_by_metric
+        assert "latency" in results_by_metric
+
+        # Validate correctness
+        corr = results_by_metric["correctness"]
+        assert corr.test_run_id == test_run.id
+        assert corr.score == 1.0
+        assert corr.status == "passed"
+        assert corr.explanation == "Expected behavior was found in the actual output."
+        assert corr.configuration_version == 1
+        assert corr.configuration == {"case_sensitive": False}
+
+        # Validate latency
+        lat = results_by_metric["latency"]
+        assert lat.test_run_id == test_run.id
+        assert lat.score == 1.0
+        assert lat.status == "passed"
+        assert lat.explanation == "Latency is within the target range."
+        assert lat.configuration_version == 1
+        assert lat.configuration == {
+            "fast_threshold_ms": 500,
+            "acceptable_threshold_ms": 1000,
+            "high_threshold_ms": 2000,
+        }
+
+        # 3. Test evaluation failures (simulated metric exception)
+        # Register a custom failing metric
+        class CrashingMetric(Metric):
+            @property
+            def name(self) -> str:
+                return "crashing_metric"
+
+            def evaluate(self, context: MetricContext) -> MetricResult:
+                raise RuntimeError("Internal metric compute failure")
+
+        metric_registry.register(CrashingMetric())
+
+        test_run_fail = TestRun(
+            id=uuid.uuid4(),
+            test_case_id=test_case.id,
+            status="completed",
+            actual_output="Paris is the capital of France.",
+            latency_ms=250,
+            result="passed",
+            executor_type="PlaceholderAgentExecutor",
+        )
+        db.add(test_run_fail)
+        db.commit()
+
+        results_with_crash = create_evaluation_result(test_run_fail, db)
+        crash_res = next(r for r in results_with_crash if r.metric_name == "crashing_metric")
+        assert crash_res.status == "failed"
+        assert crash_res.score == 0.0
+        assert "Metric execution failed: Internal metric compute failure" in crash_res.explanation
+
+        # 4. Test unknown metric rejection in registry contract
+        with pytest.raises(ValueError) as exc_info:
+            metric_registry.get("non_existent_metric")
+        assert "Unknown metric: non_existent_metric" in str(exc_info.value)
+
+        # 5. Snapshot immutability verification: live registry configuration change does not alter persisted result
+        metric_registry.configure("correctness", {"case_sensitive": True})
+        db.refresh(corr)
+        assert corr.configuration_version == 1
+        assert corr.configuration == {"case_sensitive": False}
+
+        # Clean up created records
+        db.query(EvaluationResult).filter(
+            EvaluationResult.test_run_id.in_([test_run.id, test_run_fail.id])
+        ).delete(synchronize_session=False)
+        db.query(TestRun).filter(
+            TestRun.id.in_([test_run.id, test_run_fail.id])
+        ).delete(synchronize_session=False)
+        db.query(TestCase).filter(TestCase.id == test_case.id).delete(synchronize_session=False)
+        db.commit()
+
+    finally:
+        metric_registry.reset()
+
+
+
 
 
 
