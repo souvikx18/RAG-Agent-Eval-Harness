@@ -11,6 +11,10 @@ def create_evaluation_result(
     test_run: TestRun,
     db: Session,
 ) -> list[EvaluationResult]:
+    if test_run is None:
+        raise ValueError("test_run cannot be None.")
+    if db is None:
+        raise ValueError("db session cannot be None.")
 
     existing_results = (
         db.query(EvaluationResult)

@@ -44,17 +44,17 @@ class LatencyMetric(Metric):
             self.high_threshold_ms,
         )
 
-        if not isinstance(fast_threshold, int):
+        if isinstance(fast_threshold, bool) or not isinstance(fast_threshold, int):
             raise ValueError(
                 "fast_threshold_ms must be an integer."
             )
 
-        if not isinstance(acceptable_threshold, int):
+        if isinstance(acceptable_threshold, bool) or not isinstance(acceptable_threshold, int):
             raise ValueError(
                 "acceptable_threshold_ms must be an integer."
             )
 
-        if not isinstance(high_threshold, int):
+        if isinstance(high_threshold, bool) or not isinstance(high_threshold, int):
             raise ValueError(
                 "high_threshold_ms must be an integer."
             )
@@ -97,6 +97,24 @@ class LatencyMetric(Metric):
                 score=0.0,
                 status="failed",
                 explanation="Latency was not recorded.",
+            )
+
+        if isinstance(context.latency_ms, bool) or not isinstance(
+            context.latency_ms, (int, float)
+        ):
+            return MetricResult(
+                metric_name=self.name,
+                score=0.0,
+                status="failed",
+                explanation="Latency must be an integer.",
+            )
+
+        if context.latency_ms < 0:
+            return MetricResult(
+                metric_name=self.name,
+                score=0.0,
+                status="failed",
+                explanation="Latency cannot be negative.",
             )
 
         if context.latency_ms <= self.fast_threshold_ms:

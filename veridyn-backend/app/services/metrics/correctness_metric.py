@@ -52,7 +52,7 @@ class CorrectnessMetric(Metric):
         self,
         context: MetricContext,
     ) -> MetricResult:
-        if not context.actual_output:
+        if context.actual_output is None:
             return MetricResult(
                 metric_name=self.name,
                 score=0.0,
@@ -60,7 +60,39 @@ class CorrectnessMetric(Metric):
                 explanation="No actual output was produced.",
             )
 
-        if not context.expected_behavior:
+        if not isinstance(context.actual_output, str):
+            return MetricResult(
+                metric_name=self.name,
+                score=0.0,
+                status="failed",
+                explanation="Actual output and expected behavior must be strings.",
+            )
+
+        if not context.actual_output.strip():
+            return MetricResult(
+                metric_name=self.name,
+                score=0.0,
+                status="failed",
+                explanation="No actual output was produced.",
+            )
+
+        if context.expected_behavior is None:
+            return MetricResult(
+                metric_name=self.name,
+                score=1.0,
+                status="passed",
+                explanation="No expected behavior was provided.",
+            )
+
+        if not isinstance(context.expected_behavior, str):
+            return MetricResult(
+                metric_name=self.name,
+                score=0.0,
+                status="failed",
+                explanation="Actual output and expected behavior must be strings.",
+            )
+
+        if not context.expected_behavior.strip():
             return MetricResult(
                 metric_name=self.name,
                 score=1.0,

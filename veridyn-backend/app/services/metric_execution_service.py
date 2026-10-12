@@ -12,10 +12,15 @@ def execute_metrics(
     test_case: TestCase,
     test_run: TestRun,
 ) -> list[MetricExecutionResult]:
+    if test_case is None:
+        raise ValueError("test_case cannot be None.")
+    if test_run is None:
+        raise ValueError("test_run cannot be None.")
+
     context = MetricContext(
-        expected_behavior=test_case.expected_behavior,
-        actual_output=test_run.actual_output,
-        latency_ms=test_run.latency_ms,
+        expected_behavior=getattr(test_case, "expected_behavior", None),
+        actual_output=getattr(test_run, "actual_output", None),
+        latency_ms=getattr(test_run, "latency_ms", None),
     )
 
     results = []

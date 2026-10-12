@@ -19,10 +19,12 @@ class MetricResult:
     explanation: str
 
     def __post_init__(self) -> None:
-        if not self.metric_name.strip():
+        if not isinstance(self.metric_name, str) or not self.metric_name.strip():
             raise ValueError("Metric name cannot be empty.")
 
-        if not 0.0 <= self.score <= 1.0:
+        if isinstance(self.score, bool) or not (
+            isinstance(self.score, (int, float)) and 0.0 <= self.score <= 1.0
+        ):
             raise ValueError(
                 "Metric score must be between 0.0 and 1.0."
             )
@@ -32,7 +34,7 @@ class MetricResult:
                 "Metric status must be 'passed' or 'failed'."
             )
 
-        if not self.explanation.strip():
+        if not isinstance(self.explanation, str) or not self.explanation.strip():
             raise ValueError(
                 "Metric explanation cannot be empty."
             )
