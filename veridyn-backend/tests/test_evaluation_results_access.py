@@ -10,6 +10,7 @@ from app.models.agent_version import AgentVersion
 from app.models.evaluation import Evaluation
 from app.models.test_case import TestCase
 from app.models.test_run import TestRun
+from app.models.evaluation_result import EvaluationResult
 
 
 @pytest.fixture(scope="module")
@@ -249,6 +250,119 @@ def test_evaluation_result_api_configuration_version_contract(client, authentica
         }
     finally:
         metric_registry.reset()
+
+
+def test_metric_evaluation_api_integration_and_contract_validation(client, authenticated_context, db_session):
+    """
+    Step 183: Metric Evaluation API Integration & Contract Validation.
+    - Validates the end-to-end flow from API submission to response serialization and persistence.
+    - Tests successful metric evaluation result creation via API.
+    - Validates contract schema: score, status, explanation, configuration_version, configuration.
+    - Tests input validation errors (HTTP 422 for missing required fields, empty strings, invalid types).
+    - Verifies association with parent TestRun.
+    - Confirms persisted database records exactly match the API serialization response.
+    """
+    test_run_id = authenticated_context["own_test_run_id"]
+    headers = authenticated_context["headers"]
+
+    # 1. Successful creation through API with full contract
+    valid_payload = {
+        "metric_name": "custom_contract_metric",
+        "score": 0.85,
+        "status": "passed",
+        "explanation": "Agent response adhered to custom evaluation criteria",
+        "configuration_version": 3,
+        "configuration": {
+            "strict_mode": True,
+            "threshold": 0.8,
+        },
+    }
+
+    create_resp = client.post(
+        f"/test-runs/{test_run_id}/results",
+        json=valid_payload,
+        headers=headers,
+    )
+    assert create_resp.status_code == 201
+    created_data = create_resp.json()
+
+    # Validate response schema
+    assert "id" in created_data
+    assert created_data["test_run_id"] == test_run_id
+    assert created_data["metric_name"] == "custom_contract_metric"
+    assert created_data["score"] == 0.85
+    assert created_data["status"] == "passed"
+    assert created_data["explanation"] == "Agent response adhered to custom evaluation criteria"
+    assert created_data["configuration_version"] == 3
+    assert created_data["configuration"] == {
+        "strict_mode": True,
+        "threshold": 0.8,
+    }
+
+    # 2. Verify persisted record in DB matches API response
+    result_id = uuid.UUID(created_data["id"])
+    db_record = db_session.query(EvaluationResult).filter(EvaluationResult.id == result_id).first()
+    assert db_record is not None
+    assert str(db_record.test_run_id) == test_run_id
+    assert db_record.metric_name == valid_payload["metric_name"]
+    assert db_record.score == valid_payload["score"]
+    assert db_record.status == valid_payload["status"]
+    assert db_record.explanation == valid_payload["explanation"]
+    assert db_record.configuration_version == valid_payload["configuration_version"]
+    assert db_record.configuration == valid_payload["configuration"]
+
+    # 3. Test list endpoint retrieval
+    list_resp = client.get(f"/test-runs/{test_run_id}/results", headers=headers)
+    assert list_resp.status_code == 200
+    all_results = list_resp.json()
+    matched = next((r for r in all_results if r["id"] == str(result_id)), None)
+    assert matched is not None
+    assert matched["metric_name"] == "custom_contract_metric"
+    assert matched["score"] == 0.85
+    assert matched["configuration_version"] == 3
+    assert matched["configuration"] == {"strict_mode": True, "threshold": 0.8}
+
+    # 4. Input validation: missing required field (status) -> HTTP 422
+    invalid_missing_status = {
+        "metric_name": "incomplete_metric",
+        "score": 0.5,
+    }
+    resp_missing = client.post(
+        f"/test-runs/{test_run_id}/results",
+        json=invalid_missing_status,
+        headers=headers,
+    )
+    assert resp_missing.status_code == 422
+
+    # 5. Input validation: empty metric_name -> HTTP 422
+    invalid_empty_metric = {
+        "metric_name": "",
+        "status": "passed",
+    }
+    resp_empty = client.post(
+        f"/test-runs/{test_run_id}/results",
+        json=invalid_empty_metric,
+        headers=headers,
+    )
+    assert resp_empty.status_code == 422
+
+    # 6. Input validation: malformed JSON / non-dict configuration -> HTTP 422
+    invalid_config_type = {
+        "metric_name": "bad_config",
+        "status": "passed",
+        "configuration": "not-a-dictionary",
+    }
+    resp_bad_config = client.post(
+        f"/test-runs/{test_run_id}/results",
+        json=invalid_config_type,
+        headers=headers,
+    )
+    assert resp_bad_config.status_code == 422
+
+    # Clean up test result
+    db_session.query(EvaluationResult).filter(EvaluationResult.id == result_id).delete(synchronize_session=False)
+    db_session.commit()
+
 
 
 
