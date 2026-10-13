@@ -88,3 +88,39 @@ def list_agent_versions(
         .filter(AgentVersion.agent_id == agent.id)
         .all()
     )
+
+
+detail_router = APIRouter(
+    prefix="/agent-versions",
+    tags=["Agent Versions"],
+)
+
+
+@detail_router.get(
+    "/{version_id}",
+    response_model=AgentVersionResponse,
+    summary="Get Agent Version Details",
+    description="Retrieve details of a single agent version by its ID.",
+)
+def get_agent_version_detail(
+    version_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    version = (
+        db.query(AgentVersion)
+        .join(Agent, AgentVersion.agent_id == Agent.id)
+        .filter(
+            AgentVersion.id == version_id,
+            Agent.owner_id == current_user.id,
+        )
+        .first()
+    )
+
+    if not version:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Agent version not found",
+        )
+
+    return version

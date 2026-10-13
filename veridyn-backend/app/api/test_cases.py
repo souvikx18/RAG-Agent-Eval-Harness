@@ -108,3 +108,41 @@ def list_test_cases(
         .order_by(TestCase.created_at.asc())
         .all()
     )
+
+
+detail_router = APIRouter(
+    prefix="/test-cases",
+    tags=["Test Cases"],
+)
+
+
+@detail_router.get(
+    "/{test_case_id}",
+    response_model=TestCaseResponse,
+    summary="Get Test Case Details",
+    description="Retrieve details of a single test case by its ID.",
+)
+def get_test_case_detail(
+    test_case_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    test_case = (
+        db.query(TestCase)
+        .join(Evaluation, TestCase.evaluation_id == Evaluation.id)
+        .join(AgentVersion, Evaluation.agent_version_id == AgentVersion.id)
+        .join(Agent, AgentVersion.agent_id == Agent.id)
+        .filter(
+            TestCase.id == test_case_id,
+            Agent.owner_id == current_user.id,
+        )
+        .first()
+    )
+
+    if not test_case:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Test case not found",
+        )
+
+    return test_case

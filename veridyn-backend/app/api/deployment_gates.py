@@ -50,6 +50,9 @@ def get_owned_evaluation(
     return evaluation
 
 
+from app.services.deployment_gate_service import calculate_deployment_decision
+
+
 @router.post(
     "",
     response_model=DeploymentGateResponse,
@@ -66,12 +69,18 @@ def create_deployment_gate(
         db,
     )
 
-    gate = DeploymentGate(
-        evaluation_id=evaluation.id,
-        decision="REVIEW",
-        overall_score=None,
-        reason="Deployment gate created. Automated scoring will determine the final decision.",
-    )
+    if evaluation.overall_score is not None:
+        gate = calculate_deployment_decision(
+            evaluation,
+            evaluation.overall_score,
+        )
+    else:
+        gate = DeploymentGate(
+            evaluation_id=evaluation.id,
+            decision="REVIEW",
+            overall_score=None,
+            reason="Deployment gate created. Automated scoring will determine the final decision.",
+        )
 
     db.add(gate)
     db.commit()

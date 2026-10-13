@@ -103,6 +103,61 @@ def create_evaluation(
 
 
 @router.get(
+    "",
+    response_model=list[EvaluationResponse],
+    summary="List User Evaluations",
+    description="Retrieve all evaluations across all agent versions owned by the authenticated user.",
+)
+def list_user_evaluations(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    evaluations = (
+        db.query(Evaluation)
+        .join(AgentVersion, Evaluation.agent_version_id == AgentVersion.id)
+        .join(Agent, AgentVersion.agent_id == Agent.id)
+        .filter(Agent.owner_id == current_user.id)
+        .order_by(Evaluation.created_at.desc())
+        .all()
+    )
+    return [
+        build_evaluation_response(ev, db)
+        for ev in evaluations
+    ]
+
+
+@router.get(
+    "/detail/{evaluation_id}",
+    response_model=EvaluationResponse,
+    summary="Get Evaluation Details",
+    description="Retrieve a single evaluation with full statistics and metric configurations.",
+)
+def get_evaluation_detail(
+    evaluation_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    evaluation = (
+        db.query(Evaluation)
+        .join(AgentVersion, Evaluation.agent_version_id == AgentVersion.id)
+        .join(Agent, AgentVersion.agent_id == Agent.id)
+        .filter(
+            Evaluation.id == evaluation_id,
+            Agent.owner_id == current_user.id,
+        )
+        .first()
+    )
+
+    if not evaluation:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Evaluation not found",
+        )
+
+    return build_evaluation_response(evaluation, db)
+
+
+@router.get(
     "/{agent_version_id}",
     response_model=list[EvaluationResponse],
 )

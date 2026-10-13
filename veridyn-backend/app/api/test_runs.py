@@ -12,7 +12,11 @@ from app.models.evaluation import Evaluation
 from app.models.test_case import TestCase
 from app.models.test_run import TestRun
 from app.models.user import User
-from app.schemas.test_run import PaginatedTestRunResponse, TestRunResponse
+from app.schemas.test_run import (
+    PaginatedTestRunResponse,
+    TestRunCreateRequest,
+    TestRunResponse,
+)
 from app.services.agent_execution_service import execute_test_run
 from app.services.result_service import create_evaluation_result
 
@@ -317,6 +321,28 @@ def get_owned_test_run(
         )
 
     return test_run
+
+
+@detail_router.post(
+    "",
+    response_model=TestRunResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create and Execute Test Run Directly",
+    description="Trigger execution of a test case by specifying test_case_id in request body.",
+)
+def create_test_run_direct(
+    data: TestRunCreateRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Execute a test run directly using the test_case_id provided in the JSON body.
+    """
+    return create_test_run(
+        test_case_id=data.test_case_id,
+        current_user=current_user,
+        db=db,
+    )
 
 
 @detail_router.get(

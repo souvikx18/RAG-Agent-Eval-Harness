@@ -4,6 +4,10 @@ import uuid
 from pydantic import BaseModel, Field
 
 
+class TestRunCreateRequest(BaseModel):
+    test_case_id: uuid.UUID = Field(..., description="ID of the test case to execute")
+
+
 class TestRunResponse(BaseModel):
     id: uuid.UUID = Field(..., description="Unique identifier of the test run")
     test_case_id: uuid.UUID = Field(..., description="ID of the parent test case")

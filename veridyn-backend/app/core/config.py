@@ -1,5 +1,5 @@
 import os
-from typing import Optional, Set
+from typing import List, Optional, Set, Union
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -49,6 +49,7 @@ class Settings:
     JWT_SECRET_KEY: str
     JWT_ALGORITHM: str
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int
+    CORS_ORIGINS: List[str]
 
     def __init__(
         self,
@@ -60,6 +61,7 @@ class Settings:
         jwt_secret_key: Optional[str] = None,
         jwt_algorithm: Optional[str] = None,
         jwt_access_token_expire_minutes: Optional[int] = None,
+        cors_origins: Optional[Union[List[str], str]] = None,
         auto_validate: bool = False,
         **kwargs,
     ):
@@ -132,6 +134,22 @@ class Settings:
             raise ConfigurationError(
                 "JWT_ACCESS_TOKEN_EXPIRE_MINUTES must be a valid integer."
             )
+
+        raw_cors = (
+            cors_origins
+            if cors_origins is not None
+            else kwargs.get("CORS_ORIGINS", os.getenv("CORS_ORIGINS", "*"))
+        )
+        if isinstance(raw_cors, list):
+            self.CORS_ORIGINS = raw_cors
+        elif isinstance(raw_cors, str):
+            self.CORS_ORIGINS = [
+                origin.strip()
+                for origin in raw_cors.split(",")
+                if origin.strip()
+            ]
+        else:
+            self.CORS_ORIGINS = ["*"]
 
         if auto_validate:
             self.validate()

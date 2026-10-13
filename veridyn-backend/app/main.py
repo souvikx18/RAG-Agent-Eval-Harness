@@ -1,4 +1,5 @@
 from fastapi import FastAPI, Depends
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -8,9 +9,15 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.api.auth import router as auth_router
 from app.api.agents import router as agents_router
-from app.api.agent_versions import router as agent_versions_router
+from app.api.agent_versions import (
+    router as agent_versions_router,
+    detail_router as agent_version_detail_router,
+)
 from app.api.evaluations import router as evaluations_router
-from app.api.test_cases import router as test_cases_router
+from app.api.test_cases import (
+    router as test_cases_router,
+    detail_router as test_case_detail_router,
+)
 from app.api.test_runs import (
     router as test_runs_router,
     detail_router as test_run_detail_router,
@@ -37,12 +44,22 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.CORS_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 
 app.include_router(auth_router)
 app.include_router(agents_router)
 app.include_router(agent_versions_router)
+app.include_router(agent_version_detail_router)
 app.include_router(evaluations_router)
 app.include_router(test_cases_router)
+app.include_router(test_case_detail_router)
 app.include_router(test_runs_router)
 app.include_router(test_run_detail_router)
 app.include_router(execution_traces_router)
